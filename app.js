@@ -2102,6 +2102,48 @@
     ], null);
   }
 
+  // Confirm and cancel all modal types from the keyboard. Keep this at the
+  // document level so alerts without an input still work immediately after
+  // opening, even when focus remains on the button that opened the modal.
+  document.addEventListener('keydown', ev => {
+    if (ev.isComposing) return;
+    const target = ev.target;
+
+    const visible = id => {
+      const el = $(id);
+      return el && !el.hidden ? el : null;
+    };
+    const modal = visible('uiModal') || visible('lengthenModal') || visible('modal');
+    if (!modal) return;
+    // Buttons inside the active modal already have native Enter activation;
+    // leave those alone to avoid firing both the focused button and the modal
+    // default action. A button outside the modal is usually the opener, so it
+    // must not block Enter from confirming a newly opened alert/prompt.
+    if (target && target.tagName === 'BUTTON' && target.closest('.modal-mask') === modal) return;
+
+    if (ev.key === 'Escape') {
+      const cancelId = modal.id === 'uiModal' ? 'uiModalClose'
+        : (modal.id === 'lengthenModal' ? 'lengthenCancel' : 'modalClose');
+      const cancel = $(cancelId);
+      if (cancel) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        cancel.click();
+      }
+      return;
+    }
+
+    if (ev.key !== 'Enter' || ev.shiftKey) return;
+    if (target && target.tagName === 'TEXTAREA') return;
+    const confirmId = modal.id === 'uiModal' ? null
+      : (modal.id === 'lengthenModal' ? 'lengthenOk' : 'modalSave');
+    const confirm = confirmId ? $(confirmId) : modal.querySelector('#uiModalFoot .btn-primary');
+    if (!confirm || confirm.disabled) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    confirm.click();
+  }, true);
+
   // ---------- load custom ROM ----------
   $('btnLoad').onclick = () => {
     const inp = document.createElement('input');

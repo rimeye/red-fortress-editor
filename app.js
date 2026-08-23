@@ -123,11 +123,13 @@
     buildEnemyPanel();
     buildPalettePanel();
     // initial panel/layer state (brush tool)
-    $('tilePanelSection').hidden = false;
-    $('enemyPanelSection').hidden = true;
+    const enemyPanel = $('enemyPanelSection');
+    if (enemyPanel) enemyPanel.hidden = true;
+    setSidebarTab('basic');
     refreshAll();
     updateLivesLabel();
     updateUndoButtons();
+    updateZoomLabels();
     // ensure canvas is sized after first layout
     setTimeout(() => { updateSpacer(); drawLevel(); }, 0);
     updateEnemyPerScreen();
@@ -357,18 +359,29 @@
   function buildLevelSelect() {
     const sel = $('levelSelect');
     sel.innerHTML = '';
-    for (let i = 0; i < 6; i++) {
-      const o = document.createElement('option');
-      o.value = i; o.textContent = '第 ' + (i + 1) + ' 关';
-      sel.appendChild(o);
-    }
-    sel.value = '0';
-    sel.onchange = () => {
-      level = +sel.value; selTile = 0;
-      undoStack = []; redoStack = []; updateUndoButtons(); // 撤销栈按关隔离
-      buildTypeList();
-      buildTilePalette(); buildEnemyPanel(); buildPalettePanel(); refreshAll(); updateEnemyPerScreen();
+    const selectLevel = (nextLevel) => {
+      const next = Number(nextLevel);
+      if (!Number.isInteger(next) || next < 0 || next >= 6) return;
+      if (next !== level) {
+        level = next; selTile = 0;
+        undoStack = []; redoStack = []; updateUndoButtons(); // 撤销栈按关隔离
+        buildTypeList();
+        buildTilePalette(); buildEnemyPanel(); buildPalettePanel(); refreshAll(); updateEnemyPerScreen();
+      }
+      updateLevelSelect();
     };
+    for (let i = 0; i < 6; i++) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'level-switcher-button';
+      button.textContent = '第' + (i + 1) + '关';
+      button.dataset.level = i;
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-label', '选择第 ' + (i + 1) + ' 关');
+      button.onclick = () => selectLevel(i);
+      sel.appendChild(button);
+    }
+    updateLevelSelect();
     // 精灵池：固定敌人 + 各关独有 + 道具（标注关卡归属），每个 checkbox 勾选随机 + 数量
     function buildTypeList(){
       const box = $('typeList'); if(!box) return;
@@ -416,11 +429,20 @@
     const _tc = $('btnTypeClear'); if(_tc) _tc.onclick = () => { document.querySelectorAll('.typeChk').forEach(c=>c.checked=false); };
     // 初始化精灵池列表（首次加载）
     buildTypeList();
+    updateLevelSelect();
+  }
+  function updateLevelSelect() {
+    document.querySelectorAll('#levelSelect .level-switcher-button').forEach(button => {
+      const active = Number(button.dataset.level) === level;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+      button.tabIndex = active ? 0 : -1;
+    });
   }
 
   // ---------- tile palette ----------
-  function buildTilePalette() {
-    const box = $('tilePalette');
+  function renderTilePalette(box) {
+    if (!box) return;
     box.innerHTML = '';
     const n = maxTile(level) + 1;
     for (let t = 0; t < n; t++) {
@@ -441,6 +463,9 @@
       cell.onclick = () => { selTile = t; buildTilePalette(); };
       box.appendChild(cell);
     }
+  }
+  function buildTilePalette() {
+    renderTilePalette($('quickTilePalette'));
   }
 
   // ---------- global palette editor ----------
@@ -1448,13 +1473,25 @@
   // ---------- brush size / fill range ----------
   function setBrush(size) {
     brushSize = size;
-    for (const s of [1, 2, 3, 4]) $('brush' + s).classList.toggle('active', s === size);
+    for (const s of [1, 2, 3, 4]) {
+      const button = $('brush' + s);
+      if (button) button.classList.toggle('active', s === size);
+    }
+    document.querySelectorAll('.quick-brush').forEach(button => {
+      button.classList.toggle('active', Number(button.dataset.size) === size);
+    });
   }
-  $('brush1').onclick = () => setBrush(1);
-  $('brush2').onclick = () => setBrush(2);
-  $('brush3').onclick = () => setBrush(3);
-  $('brush4').onclick = () => setBrush(4);
-  $('btnFillRange').onclick = async () => {
+  for (const size of [1, 2, 3, 4]) {
+    const button = $('brush' + size);
+    if (button) button.onclick = () => setBrush(size);
+  }
+  document.querySelectorAll('.quick-brush').forEach(button => {
+    button.onclick = () => setBrush(Number(button.dataset.size));
+  });
+  $('quickCopy').onclick = () => $('btnCopy').click();
+  $('quickPaste').onclick = () => $('btnPaste').click();
+  setBrush(brushSize);
+  async function fillRange() {
     const e = edit.levels[level];
     const v1 = await uiPrompt('批量填充', '起始屏（从下往上第几屏，1-' + e.idx.length + '）', '1');
     if (v1 == null) return;
@@ -1475,7 +1512,10 @@
     }
     refreshAll();
     statusMsg('已将第 ' + (start + 1) + '~' + (end + 1) + ' 屏填充为图块 #' + tile);
-  };
+  }
+  const fillButton = $('btnFillRange');
+  if (fillButton) fillButton.onclick = fillRange;
+  $('quickFill').onclick = fillRange;
 
   // ---------- 批量删除（精灵/地图） ----------
   function clearSpawnList(list){
@@ -1495,13 +1535,24 @@
   function clearMapBlock(e, s){
     const bi = e.idx[s];
     const blk = e.layoutBlocks[bi];
-    if(blk) for(let k=0; k<128; k++) blk[k] = emptyGround(level);
+    if(!blk) return;
+    // 共享 layout block 不能直接改，否则会连带清空未选中的屏。
+    let refs = 0;
+    for(const id of e.idx) if(id === bi) refs++;
+    if(refs > 1){
+      const copy = blk.slice();
+      e.layoutBlocks.push(copy);
+      e.idx[s] = e.layoutBlocks.length - 1;
+      for(let k=0; k<128; k++) copy[k] = emptyGround(level);
+    } else {
+      for(let k=0; k<128; k++) blk[k] = emptyGround(level);
+    }
   }
-  function parseScreenRange(){
+  function parseScreenRange(fromId, toId){
     const e = edit.levels[level];
     const n = e.idx.length;
-    const from = parseInt($('scrFrom').value, 10);
-    const to = parseInt($('scrTo').value, 10);
+    const from = parseInt($(fromId).value, 10);
+    const to = parseInt($(toId).value, 10);
     if(isNaN(from) || isNaN(to) || from < 1 || to < from || to > n) return null;
     return { s0: from - 1, s1: to - 1 };
   }
@@ -1527,7 +1578,7 @@
   };
   $('btnClearSelSprites').onclick = () => {
     const e = edit.levels[level];
-    const r = parseScreenRange();
+    const r = parseScreenRange('clearFrom', 'clearTo');
     if(!r){ statusMsg('屏号无效：需 1-' + e.idx.length + '，且「到」≥「从」'); return; }
     const war = bossWarScreenSet();
     let skipped = 0;
@@ -1538,7 +1589,7 @@
   };
   $('btnClearSelMap').onclick = () => {
     const e = edit.levels[level];
-    const r = parseScreenRange();
+    const r = parseScreenRange('clearFrom', 'clearTo');
     if(!r){ statusMsg('屏号无效：需 1-' + e.idx.length + '，且「到」≥「从」'); return; }
     const war = bossWarScreenSet();
     let skipped = 0;
@@ -1559,12 +1610,12 @@
     $('toolSelect').classList.toggle('active', t === 'select');
     $('toolBossPos').classList.toggle('active', t === 'bossPos');
     levelCanvas.style.cursor = t === 'bossPos' ? 'grab' : (t === 'pan' ? 'grab' : 'crosshair');
-    // 敌人工具显示敌人并切到敌人面板；画笔隐藏敌人，橡皮显示敌人（可点删）、显示图块面板
+    // 敌人工具切到独立敌人面板；其他工具回到基础面板。
     const isEnemy = t === 'enemy';
-    const tp = $('tilePanelSection'), ep = $('enemyPanelSection');
-    if (tp) tp.hidden = isEnemy;
+    const ep = $('enemyPanelSection');
     if (ep) ep.hidden = !isEnemy;
     if (isEnemy) buildEnemyPanel();
+    setSidebarTab(isEnemy ? 'enemy' : (t === 'brush' ? 'tiles' : 'basic'));
     drawLevel();
   }
   $('toolBrush').onclick = () => setTool('brush');
@@ -1722,10 +1773,16 @@
   $('btnScrollDown').onclick = () => scrollByScreen(1);
 
   // ---------- zoom ----------
+  function updateZoomLabels() {
+    const value = Math.round(zoom * 100) + '%';
+    const label = $('zoomLabel');
+    const quickLabel = $('quickZoomLabel');
+    if (label) label.textContent = value;
+    if (quickLabel) quickLabel.textContent = value;
+  }
   function applyZoom() {
     updateSpacer();
-    const label = $('zoomLabel');
-    if (label) label.textContent = Math.round(zoom * 100) + '%';
+    updateZoomLabels();
     drawLevel();
   }
   function zoomBy(factor) {
@@ -1746,6 +1803,38 @@
   $('zoomIn').onclick = () => zoomBy(1.2);
   $('zoomOut').onclick = () => zoomBy(1 / 1.2);
   $('zoomReset').onclick = () => { zoom = 1; applyZoom(); };
+  $('quickZoomIn').onclick = () => zoomBy(1.2);
+  $('quickZoomOut').onclick = () => zoomBy(1 / 1.2);
+  $('quickZoomReset').onclick = () => { zoom = 1; applyZoom(); };
+
+  function initCollapsiblePanels() {
+    document.querySelectorAll('.panel-collapsible > h2').forEach(heading => {
+      heading.addEventListener('click', () => {
+        const panel = heading.closest('.panel-collapsible');
+        if (panel) panel.classList.toggle('panel-collapsed');
+      });
+    });
+  }
+  function setSidebarTab(tab) {
+    document.querySelectorAll('[data-sidebar-tab]').forEach(button => {
+      button.classList.toggle('active', button.dataset.sidebarTab === tab);
+    });
+    const panels = document.querySelectorAll('#sidebarContent > [data-sidebar-group]');
+    panels.forEach(panel => {
+      const active = panel.dataset.sidebarGroup === tab;
+      panel.classList.toggle('sidebar-panel-active', active);
+      if (active && panel.classList.contains('panel-collapsed')) panel.classList.remove('panel-collapsed');
+    });
+    const enemyPanel = $('enemyPanelSection');
+    if (enemyPanel && tab === 'enemy') {
+      enemyPanel.hidden = false;
+      buildEnemyPanel();
+    }
+  }
+  document.querySelectorAll('[data-sidebar-tab]').forEach(button => {
+    button.onclick = () => setSidebarTab(button.dataset.sidebarTab);
+  });
+  initCollapsiblePanels();
 
   // ---------- lives / boss HP ----------
   function updateLivesLabel() { $('btnLives').textContent = '命数 · ' + edit.lives; }

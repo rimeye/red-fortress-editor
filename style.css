@@ -252,6 +252,66 @@ select {
   line-height: 1.5;
 }
 
+.sprite-params-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sprite-param-scope,
+.sprite-param-type-row,
+.sprite-param-row,
+.sprite-param-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.param-scope-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.param-scope-btn.active {
+  color: #06151c;
+  background: var(--accent2);
+  border-color: var(--accent2);
+  font-weight: 700;
+}
+.sprite-param-type {
+  min-width: 180px;
+  max-width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 6px;
+}
+.sprite-param-affected {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.sprite-param-row label {
+  min-width: 64px;
+  font-size: 13px;
+}
+.sprite-param-row input {
+  width: 90px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 7px;
+  font-size: 14px;
+}
+.sprite-param-actions .tool {
+  font-size: 12px;
+  padding: 5px 7px;
+}
+
 .palette-panel {
   display: flex;
   flex-direction: column;

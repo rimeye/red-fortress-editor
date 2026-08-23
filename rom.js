@@ -27,19 +27,39 @@
 
   const LIVES_OFFSET = 0x1CA2A;
 
+  // Fixed-bank table indexed by the spawn object type.  The high bit marks
+  // boss-style health entries; the low seven bits are the mutable value.
   const ENEMY_HEALTH_BASE = 0x1FA52;
   const BOSS_HP = [
-    { id: 'l1boss',   name: 'Level 1 Boss Tank',          offsets: [ENEMY_HEALTH_BASE + 0x0A], defaultValue: 0x8A },
-    { id: 'l2boss',   name: 'Level 2 Boss Statue Head',   offsets: [ENEMY_HEALTH_BASE + 0x18], defaultValue: 0x8F },
+    { id: 'l1boss',   name: 'Level 1 Boss Tank',          spriteType: 0x0A, offsets: [ENEMY_HEALTH_BASE + 0x0A], defaultValue: 0x8A },
+    { id: 'l2boss',   name: 'Level 2 Boss Statue Head',   spriteType: 0x18, offsets: [ENEMY_HEALTH_BASE + 0x18], defaultValue: 0x8F },
     { id: 'l3boss',   name: 'Level 3 Boss Spread Turret', offsets: [0x195D6, 0x195E6],         defaultValue: 0x86 },
-    { id: 'l4boss',   name: 'Level 4 Boss Helicopter',    offsets: [ENEMY_HEALTH_BASE + 0x40], defaultValue: 0xA0 },
-    { id: 'l5gate',   name: 'Level 5 Electric Gate',      offsets: [ENEMY_HEALTH_BASE + 0x26], defaultValue: 0x81 },
-    { id: 'l5door',   name: 'Level 5 Boss Door',          offsets: [ENEMY_HEALTH_BASE + 0x31, 0x1B07C, 0x1B084], defaultValue: 0x83 },
-    { id: 'l6turret', name: '第6关 激光炮',               offsets: [ENEMY_HEALTH_BASE + 0x47], defaultValue: 0x8F },
-    { id: 'l6boss',   name: '第6关 基地(Building HQ)',    offsets: [ENEMY_HEALTH_BASE + 0x4A], defaultValue: 0xBF },
-    { id: 'l6tank',   name: '第6关 大坦克',               offsets: [ENEMY_HEALTH_BASE + 0x4B], defaultValue: 0xFF },
-    { id: 'l6gun',    name: '第6关 挂载炮',               offsets: [ENEMY_HEALTH_BASE + 0x4F], defaultValue: 0xC0 },
+    { id: 'l4boss',   name: 'Level 4 Boss Helicopter',    spriteType: 0x40, offsets: [ENEMY_HEALTH_BASE + 0x40], defaultValue: 0xA0 },
+    { id: 'l5gate',   name: 'Level 5 Electric Gate',      spriteType: 0x26, offsets: [ENEMY_HEALTH_BASE + 0x26], defaultValue: 0x81 },
+    { id: 'l5door',   name: 'Level 5 Boss Door',          spriteType: 0x31, offsets: [ENEMY_HEALTH_BASE + 0x31, 0x1B07C, 0x1B084], defaultValue: 0x83 },
+    { id: 'l6turret', name: '第6关 激光炮',               spriteType: 0x47, offsets: [ENEMY_HEALTH_BASE + 0x47], defaultValue: 0x8F },
+    { id: 'l6boss',   name: '第6关 基地(Building HQ)',    spriteType: 0x4A, offsets: [ENEMY_HEALTH_BASE + 0x4A], defaultValue: 0xBF },
+    { id: 'l6tank',   name: '第6关 大坦克',               spriteType: 0x4B, offsets: [ENEMY_HEALTH_BASE + 0x4B], defaultValue: 0xFF },
+    { id: 'l6gun',    name: '第6关 挂载炮',               spriteType: 0x4F, offsets: [ENEMY_HEALTH_BASE + 0x4F], defaultValue: 0xC0 },
   ];
+
+  // Only parameters with a verified runtime read path are listed here.  The
+  // generic health table is read by the two object-initialization sites in
+  // the fixed bank.  Boss-specific routines remain in BOSS_HP when they do
+  // not use this table (for example the L3 spread turret).
+  const SPRITE_RUNTIME_PARAMS = {
+    health: {
+      id: 'health',
+      label: '生命值',
+      min: 0,
+      max: 127,
+      kind: 'u7',
+      nativeBase: ENEMY_HEALTH_BASE,
+      hookSites: [0x1F1D0, 0x1F2C5],
+      dataRows: 6,
+      dataCols: 128,
+    },
+  };
 
   // Boss count (how many boss entities must be destroyed to clear the level).
   // Each entry patches the immediate operand of the "LDA #$XX" that seeds
@@ -378,7 +398,8 @@
 
   return {
     PRG_BASE, BANK_SIZE, BANK7_ROM, LEVELS, TILE_OFFSET,
-    LIVES_OFFSET, BOSS_HP, BOSS_COUNT, BOSS_POS_DEFAULT, BOSS_POS_RANGE, POS_MAX, PTR, SPAWN, GFX, LEVEL_BG_BLOCKS,
+    LIVES_OFFSET, ENEMY_HEALTH_BASE, BOSS_HP, BOSS_COUNT, BOSS_POS_DEFAULT, BOSS_POS_RANGE, POS_MAX, PTR, SPAWN, GFX, LEVEL_BG_BLOCKS,
+    SPRITE_RUNTIME_PARAMS,
     bankRom, read16, write16,
     levelTableRom, levelTableSize, getLevelData,
     decodeRLEBlock, buildLevelCHR, getLevelPalette,

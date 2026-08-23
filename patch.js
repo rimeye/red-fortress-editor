@@ -88,6 +88,106 @@
   const POS_VANILLA_COUNT = { l2boss: 4, l3boss: 6, l5door: 4, l6turret: 2 };
   const POS_TABLE_BASE = 0x1FDF2;                   // fixed-bank free space (after HELPER2)
 
+  // Sprite runtime parameter extension.  The original game reads the common
+  // health table at two fixed-bank sites.  Per-level overrides are stored in
+  // a small dedicated data bank and the fixed-bank helper resolves them at
+  // object initialization time, falling back to the native table when the
+  // entry is zero.
+  const SPRITE_PARAM_META_OFF = 0x1FFC4;             // after HELPER3
+  const SPRITE_PARAM_HELPER_OFF = 0x1FFC9;
+  const SPRITE_PARAM_MAGIC = [0x4A, 0x53, 0x50, 0x31]; // "JSP1"
+  const SPRITE_PARAM_DATA_OFFSET = 0x80;             // keep bank-switch header clear
+  const SPRITE_PARAM_DATA_SIZE = SPRITE_PARAM_DATA_OFFSET + 6 * 0x80;
+  const SPRITE_PARAM_HOOK_SITES = J.SPRITE_RUNTIME_PARAMS.health.hookSites;
+
+  function buildSpriteHealthHelper(paramBank) {
+    const code = [
+      0x84, 0xF6,                   // STY $F6 (object type; restore Y before RTS)
+      0xB9, 0x42, 0xFA,             // LDA $FA42,Y (native health)
+      0x48,                         // PHA (native value)
+      0xA5, 0x30, 0x18, 0x69, 0x80, 0x85, 0xF9, // ptr high = $80 + current level
+      0xA9, 0x00, 0x85, 0xF8,       // ptr low = 0
+      0xA0, paramBank, 0x20, 0xB5, 0xC3, // switch to parameter bank
+      0xA4, 0xF6, 0xB1, 0xF8,       // LDA ($F8),Y
+      0xF0, 0x00,                   // BEQ fallback (offset filled below)
+      0x38, 0xE9, 0x01, 0x29, 0x7F, // decode health+1
+      0x85, 0xF7,
+      0x68,                         // native value
+      0x29, 0x80, 0x05, 0xF7,       // preserve native boss flag
+      0x48,                         // save resolved value while restoring bank
+      0xA0, 0x06, 0x20, 0xB5, 0xC3,
+      0xA4, 0xF6, 0x68, 0x60,       // restore object type in Y, return resolved value
+    ];
+    const branch = code.indexOf(0xF0) + 1;
+    const fallback = code.length;
+    code[branch] = fallback - (branch + 1);
+    code.push(
+      0x68,                         // native value
+      0x48,                         // preserve it while restoring bank
+      0xA0, 0x06, 0x20, 0xB5, 0xC3,
+      0xA4, 0xF6, 0x68, 0x60,
+    );
+    return code;
+  }
+
+  function spriteParamOverridesPresent(edit) {
+    const levels = edit && edit.spriteParams && edit.spriteParams.levels;
+    if (!Array.isArray(levels)) return false;
+    return levels.some(levelMap => levelMap && Object.values(levelMap).some(v => v && v.health != null));
+  }
+
+  function buildSpriteParamData(edit) {
+    const out = new Uint8Array(SPRITE_PARAM_DATA_SIZE);
+    for (let k = 0; k < 8; k++) out[k] = k;
+    const levels = edit.spriteParams.levels || [];
+    for (let l = 0; l < 6; l++) {
+      const map = levels[l] || {};
+      for (const key of Object.keys(map)) {
+        const type = Number(key);
+        const value = map[key] && map[key].health;
+        if (!Number.isInteger(type) || type < 0 || type >= 0x80 || value == null) continue;
+        out[SPRITE_PARAM_DATA_OFFSET + l * 0x80 + type] = clamp(value, 0, 127) + 1;
+      }
+    }
+    return out;
+  }
+
+  function readSpriteParams(rom, fix) {
+    const global = {};
+    for (let type = 0; type < 0x80; type++) {
+      global[type] = { health: rom[fix(J.ENEMY_HEALTH_BASE + type)] & 0x7F };
+    }
+    const levels = Array.from({ length: 6 }, () => ({}));
+    const meta = fix(SPRITE_PARAM_META_OFF);
+    const hasMagic = SPRITE_PARAM_MAGIC.every((v, i) => rom[meta + i] === v);
+    const paramBank = hasMagic ? rom[meta + 4] : 0xFF;
+    if (hasMagic && paramBank < (rom[4] || 8)) {
+      const base = J.PRG_BASE + paramBank * J.BANK_SIZE + SPRITE_PARAM_DATA_OFFSET;
+      for (let l = 0; l < 6; l++) {
+        for (let type = 0; type < 0x80; type++) {
+          const encoded = rom[base + l * 0x80 + type];
+          if (encoded) levels[l][type] = { health: encoded - 1 };
+        }
+      }
+    }
+    const defaults = { global: JSON.parse(JSON.stringify(global)) };
+    return { global, levels, defaults, boss: {} };
+  }
+
+  function syncSpriteBossParams(edit) {
+    if (!edit || !edit.spriteParams) return;
+    edit.spriteParams.boss = {};
+    for (const b of J.BOSS_HP) {
+      edit.spriteParams.boss[b.id] = {
+        health: edit.bossHp && edit.bossHp[b.id],
+        count: edit.bossCount && edit.bossCount[b.id],
+        pos: edit.bossPos && edit.bossPos[b.id]
+          ? { x: edit.bossPos[b.id].x.slice(), y: edit.bossPos[b.id].y ? edit.bossPos[b.id].y.slice() : null }
+          : null,
+      };
+    }
+  }
+
   function clamp(v, lo, hi) { v = v | 0; if (isNaN(v)) v = lo; return Math.max(lo, Math.min(hi, v)); }
 
   function parseScreenList(rom, listBase) {
@@ -193,7 +293,7 @@
     const fix = o => (o >= FIXED_BANK_ROM && o < FIXED_BANK_END ? o + shift : o);
     const read16 = o => rom[o] | (rom[o + 1] << 8);
     const edit = { lives: rom[fix(J.LIVES_OFFSET)], copyrightLines: parseCopyrightLines(rom),
-    bossHp: {}, bossCount: {}, bossPos: {}, levels: [], palettes: [] };
+    bossHp: {}, bossCount: {}, bossPos: {}, spriteParams: readSpriteParams(rom, fix), levels: [], palettes: [] };
     for (const b of J.BOSS_HP) edit.bossHp[b.id] = rom[fix(b.offsets[0])] & 0x7F;
     for (const b of J.BOSS_COUNT) edit.bossCount[b.id] = b.fixed ? b.defaultValue : rom[b.offset];
     // Boss 出现位置表：必须从 ROM 真实读取（以前直接套用 uniformPos 默认值，
@@ -267,6 +367,7 @@
       const base = fix(J.LEVEL_PALETTE_BASE) + l * 0x23 + 2;
       edit.palettes.push(Array.from(rom.subarray(base, base + 32)));
     }
+    syncSpriteBossParams(edit);
     return edit;
   }
   // ---------- 标题画面 credits（署名） ----------
@@ -396,6 +497,7 @@
   function buildPatchedROM(origRom, edit) {
     const read16 = (o) => origRom[o] | (origRom[o + 1] << 8);
     const fixIn = (o) => o; // 原版 ROM 无偏移
+    syncSpriteBossParams(edit);
     // 原位写入优先：只要数据能塞进原版槽位（banks 4/5 关卡数据 + bank 6 spawn 区），
     // 就覆盖原地址写入，ROM 保持 8 bank。这样游戏里所有代码路径——无论走指针表
     // （0x1D004/0x1DBFE/0x1F1F0）还是硬编码银行（LDY #$04/$05/$06）——读到的都是新数据，
@@ -421,6 +523,7 @@
         JSON.stringify(edit.bossHp || {}) === JSON.stringify(baseEdit.bossHp || {}) &&
         JSON.stringify(edit.bossCount || {}) === JSON.stringify(baseEdit.bossCount || {}) &&
         JSON.stringify(edit.bossPos || {}) === JSON.stringify(baseEdit.bossPos || {}) &&
+        JSON.stringify(edit.spriteParams || {}) === JSON.stringify(baseEdit.spriteParams || {}) &&
         JSON.stringify(edit.lives ?? null) === JSON.stringify(baseEdit.lives ?? null) &&
         JSON.stringify(edit.copyrightLines || []) === JSON.stringify(baseEdit.copyrightLines || []) &&
         JSON.stringify(edit.palettes || []) === JSON.stringify(baseEdit.palettes || []);
@@ -438,10 +541,59 @@
     return rom2;
   }
 
+  function patchSpriteHealthRuntime(rom, edit, shift, paramBank) {
+    const fix = o => (o >= FIXED_BANK_ROM && o < FIXED_BANK_END ? o + shift : o);
+    const hasOverrides = spriteParamOverridesPresent(edit);
+    const helperAt = fix(SPRITE_PARAM_HELPER_OFF);
+    const metaAt = fix(SPRITE_PARAM_META_OFF);
+    const cpu = 0xC000 + (SPRITE_PARAM_HELPER_OFF - FIXED_BANK_ROM);
+    if (hasOverrides) {
+      if (paramBank == null || paramBank > 0xFF) {
+        throw new Error('精灵参数覆盖表没有可用的数据 bank');
+      }
+      const helper = buildSpriteHealthHelper(paramBank);
+      const fixedEnd = FIXED_BANK_END + shift;
+      if (helperAt + helper.length > fixedEnd) {
+        throw new Error('精灵参数运行时代码超出固定 bank 可用空间');
+      }
+      rom.set(SPRITE_PARAM_MAGIC, metaAt);
+      rom[metaAt + 4] = paramBank & 0xFF;
+      rom.set(helper, helperAt);
+      for (const site of SPRITE_PARAM_HOOK_SITES) {
+        const at = fix(site);
+        const isNative = rom[at] === 0xB9 && rom[at + 1] === 0x42 && rom[at + 2] === 0xFA;
+        const isHook = rom[at] === 0x20 && rom[at + 1] === (cpu & 0xFF) && rom[at + 2] === ((cpu >> 8) & 0xFF);
+        if (!isNative && !isHook) throw new Error('无法识别精灵生命值读取点 $' + site.toString(16).toUpperCase());
+        rom.set([0x20, cpu & 0xFF, (cpu >> 8) & 0xFF], at);
+      }
+    } else {
+      // Clearing all per-level overrides must also remove a previous generated
+      // hook when the user reloads an already patched ROM and clears them.
+      rom.fill(0xFF, metaAt, metaAt + SPRITE_PARAM_MAGIC.length + 1);
+      for (const site of SPRITE_PARAM_HOOK_SITES) {
+        const at = fix(site);
+        const isNative = rom[at] === 0xB9 && rom[at + 1] === 0x42 && rom[at + 2] === 0xFA;
+        const isHook = rom[at] === 0x20 && rom[at + 1] === (cpu & 0xFF) && rom[at + 2] === ((cpu >> 8) & 0xFF);
+        if (!isNative && !isHook) throw new Error('无法恢复精灵生命值读取点 $' + site.toString(16).toUpperCase());
+        rom.set([0xB9, 0x42, 0xFA], at);
+      }
+    }
+  }
+
   // apply lives + boss HP. shift = fixed-bank offset shift (0 for in-place).
-  function applyCheatPatches(rom, edit, shift) {
+  function applyCheatPatches(rom, edit, shift, options) {
+    options = options || {};
     const fix = o => (o >= FIXED_BANK_ROM && o < FIXED_BANK_END ? o + shift : o);
     rom[fix(J.LIVES_OFFSET)] = clamp(edit.lives, 1, 255);
+    const health = edit.spriteParams && edit.spriteParams.global;
+    if (health) {
+      for (let type = 0; type < 0x80; type++) {
+        const value = health[type] && health[type].health;
+        if (value == null) continue;
+        const at = fix(J.ENEMY_HEALTH_BASE + type);
+        rom[at] = (rom[at] & 0x80) | (clamp(value, 0, 127) & 0x7F);
+      }
+    }
     for (const b of J.BOSS_HP) {
       const v = clamp(edit.bossHp[b.id] != null ? edit.bossHp[b.id] : b.defaultValue, 0, 127);
       for (const o of b.offsets) rom[fix(o)] = 0x80 | (v & 0x7F); // bit7 = boss flag, low 7 bits = HP
@@ -486,6 +638,7 @@
       // 按「原默认色值 → 用户新色」映射替换；闪烁专用色（不在默认表）保留。
       syncPaletteStreams(rom, edit, fix, origPals);
     }
+    patchSpriteHealthRuntime(rom, edit, shift, options.paramBank);
   }
 
   // Helipad 闪烁流（每关 3×19B，PPU 头 + 16 色 + FE）与 F2 boss 换色流。
@@ -534,6 +687,7 @@
     // 去重 layout 块（副本），让加长（大片相同空白屏）能塞进单 bank；不动底层 edit。
     const packedLevels = edit.levels.map(lvl => dedupeLevelCopy(lvl));
     const levelData = packedLevels.map(e => serializeLevelData(e));
+    const hasSpriteOverrides = spriteParamOverridesPresent(edit);
 
     const baseBank = 7;
     let nextBank = baseBank;
@@ -561,7 +715,10 @@
       if (sUsed + sz > 0x4000) { sBank++; sUsed = 8; }
       spawnBank[l] = sBank; spawnAddr[l] = 0x8000 + sUsed; sUsed += sz;
     }
-    const highestBank = Math.max(sBank, nextBank - 1);
+    // Keep the runtime override table in its own switchable bank.  It is only
+    // allocated when the editor has at least one per-level override.
+    const paramBank = hasSpriteOverrides ? sBank + 1 : null;
+    const highestBank = Math.max(sBank, nextBank - 1, paramBank == null ? -1 : paramBank);
     const dataBanks = highestBank - baseBank + 1;
     const totalBanks = 8 + dataBanks;
     // FCEUX (and other strict emulators) require UNROM PRG to be a power of two.
@@ -611,9 +768,13 @@
       const bankBase = J.PRG_BASE + spawnBank[l] * J.BANK_SIZE;
       newRom.set(spawnTables[l], bankBase + (spawnAddr[l] - 0x8000));
     }
+    if (paramBank != null) {
+      const bankBase = J.PRG_BASE + paramBank * J.BANK_SIZE;
+      newRom.set(buildSpriteParamData(edit), bankBase);
+    }
 
     const fix = o => (o >= FIXED_BANK_ROM && o < FIXED_BANK_END ? o + shift : o);
-    applyCheatPatches(newRom, edit, shift);
+    applyCheatPatches(newRom, edit, shift, { paramBank });
 
     // Boss/末段运行时代码原本把屏号写死为原版地图位置。
     // 地图缩短或增加后，Boss 屏都会移动，因此所有相关比较必须写入

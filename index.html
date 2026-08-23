@@ -73,6 +73,7 @@
       <button type="button" class="sidebar-tab active" data-sidebar-tab="basic">基础</button>
       <button type="button" class="sidebar-tab" data-sidebar-tab="tiles">图块</button>
       <button type="button" class="sidebar-tab" data-sidebar-tab="enemy">敌人</button>
+      <button type="button" class="sidebar-tab" data-sidebar-tab="params">参数</button>
       <button type="button" class="sidebar-tab" data-sidebar-tab="random">随机</button>
       <button type="button" class="sidebar-tab" data-sidebar-tab="copy">复制</button>
       <button type="button" class="sidebar-tab" data-sidebar-tab="cleanup">清理</button>
@@ -222,6 +223,11 @@
       <h2>敌人 <span class="muted">(点击选择类型)</span></h2>
       <div id="enemyPanel" class="enemy-panel"></div>
       <p class="hint">「敌人」工具：点击空白放置敌人，点击已有敌人删除。敌人按 x×4 像素、y 触发点显示。</p>
+    </section>
+
+    <section class="panel" id="spriteParamsPanelSection" data-sidebar-group="params">
+      <h2>精灵参数 <span class="muted">(真实写入 ROM)</span></h2>
+      <div id="spriteParamsPanel" class="sprite-params-panel"></div>
     </section>
 
     <section class="panel panel-collapsible panel-collapsed" data-sidebar-group="settings">

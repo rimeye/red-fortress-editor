@@ -13,6 +13,7 @@
   let brushSize = 1;     // brush size in tiles (1x1, 2x2, ...)
   let dragBoss = null;    // { id, k } — boss position being dragged
   let selEnemy = 1;      // selected enemy type (object ID)
+  let spriteParamScope = 'global'; // 'global' or 'level'
   let enemySel = null;     // { screen, off } — selected enemy entry (move mode)
   let selStart = null;     // {x, y} drag start in canvas px
   let selRect = null;      // {x0, y0, x1, y1} canvas px
@@ -121,6 +122,7 @@
     buildLevelSelect();
     buildTilePalette();
     buildEnemyPanel();
+    buildSpriteParamsPanel();
     buildPalettePanel();
     // initial panel/layer state (brush tool)
     const enemyPanel = $('enemyPanelSection');
@@ -351,10 +353,179 @@
       span.textContent = '#' + id.toString(16).toUpperCase() + ' ' + name;
       btn.appendChild(cvs);
       btn.appendChild(span);
-      btn.onclick = () => { selEnemy = id; buildEnemyPanel(); };
+      btn.onclick = () => { selEnemy = id; buildEnemyPanel(); buildSpriteParamsPanel(); };
       box.appendChild(btn);
     }
   }
+
+  function spriteParamTypeIds() {
+    const ids = [];
+    const map = J.SPRITE_RUNTIME_PARAMS && J.SPRITE_RUNTIME_PARAMS.health;
+    if (!map) return ids;
+    for (let type = 0; type < 0x80; type++) {
+      const ai = J.ENEMY_AI_MAP[type];
+      if (ai && ai.s != null) ids.push(type);
+    }
+    return ids;
+  }
+
+  function spriteParamBoss(type) {
+    return (J.BOSS_HP || []).find(b => b.spriteType === type) || null;
+  }
+
+  function spriteParamTypeName(type) {
+    return ENEMY_NAMES[type] || ('对象#' + type.toString(16).toUpperCase());
+  }
+
+  function spriteHealthGlobal(type) {
+    const p = edit && edit.spriteParams && edit.spriteParams.global && edit.spriteParams.global[type];
+    return p && p.health != null ? p.health : 0;
+  }
+
+  function spriteHealthLevelOverride(type) {
+    const levels = edit && edit.spriteParams && edit.spriteParams.levels;
+    const p = levels && levels[level] && levels[level][type];
+    return p && p.health != null ? p.health : null;
+  }
+
+  function buildSpriteParamsPanel() {
+    const box = $('spriteParamsPanel');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!edit || !edit.spriteParams) return;
+    const ids = spriteParamTypeIds();
+    if (!ids.length) {
+      box.textContent = '当前 ROM 没有可识别的精灵运行参数。';
+      return;
+    }
+    if (!ids.includes(selEnemy)) selEnemy = ids[0];
+
+    const hint = document.createElement('div');
+    hint.className = 'enemy-hint';
+    hint.textContent = '参数按精灵类型生效；未确认真实读取位置的攻击参数不会显示。';
+    box.appendChild(hint);
+
+    const scopeRow = document.createElement('div');
+    scopeRow.className = 'sprite-param-scope';
+    const scopeLabel = document.createElement('span');
+    scopeLabel.className = 'muted';
+    scopeLabel.textContent = '作用范围';
+    scopeRow.appendChild(scopeLabel);
+    for (const [value, label] of [['global', '全局'], ['level', '第' + (level + 1) + '关覆盖']]) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'param-scope-btn' + (spriteParamScope === value ? ' active' : '');
+      btn.textContent = label;
+      btn.onclick = () => { spriteParamScope = value; buildSpriteParamsPanel(); };
+      scopeRow.appendChild(btn);
+    }
+    box.appendChild(scopeRow);
+
+    const typeRow = document.createElement('div');
+    typeRow.className = 'sprite-param-type-row';
+    const typeLabel = document.createElement('span');
+    typeLabel.className = 'muted';
+    typeLabel.textContent = '精灵类型';
+    const typeSelect = document.createElement('select');
+    typeSelect.className = 'sprite-param-type';
+    for (const id of ids) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = '#' + id.toString(16).toUpperCase() + ' ' + spriteParamTypeName(id);
+      opt.selected = id === selEnemy;
+      typeSelect.appendChild(opt);
+    }
+    typeSelect.onchange = () => {
+      selEnemy = Number(typeSelect.value);
+      buildEnemyPanel();
+      buildSpriteParamsPanel();
+    };
+    typeRow.appendChild(typeLabel);
+    typeRow.appendChild(typeSelect);
+    box.appendChild(typeRow);
+
+    const affected = document.createElement('div');
+    affected.className = 'sprite-param-affected';
+    const shared = ids.filter(id => {
+      const ai = J.ENEMY_AI_MAP[id];
+      return ai && ai.s === J.ENEMY_AI_MAP[selEnemy].s;
+    });
+    affected.textContent = shared.length > 1
+      ? '共享同一精灵构造器的类型：' + shared.map(id => '#' + id.toString(16).toUpperCase()).join('、')
+      : '当前参数只针对类型 #' + selEnemy.toString(16).toUpperCase();
+    box.appendChild(affected);
+
+    const row = document.createElement('div');
+    row.className = 'sprite-param-row';
+    const label = document.createElement('label');
+    label.textContent = '生命值';
+    const input = document.createElement('input');
+    input.type = 'number'; input.min = 0; input.max = 127; input.step = 1;
+    const override = spriteHealthLevelOverride(selEnemy);
+    input.value = spriteParamScope === 'level' && override != null ? override : spriteHealthGlobal(selEnemy);
+    input.title = spriteParamScope === 'level' && override == null ? '当前关尚未覆盖，正在继承全局值' : '生命值 0-127';
+    let undoTaken = false;
+    input.onfocus = () => { undoTaken = false; };
+    input.oninput = () => {
+      if (!undoTaken) { pushUndo(); undoTaken = true; }
+      let value = parseInt(input.value, 10);
+      if (!Number.isFinite(value)) return;
+      value = Math.max(0, Math.min(127, value));
+      input.value = value;
+      if (spriteParamScope === 'global') {
+        edit.spriteParams.global[selEnemy] = { health: value };
+        const boss = spriteParamBoss(selEnemy);
+        if (boss && boss.offsets[0] === J.ENEMY_HEALTH_BASE + selEnemy) edit.bossHp[boss.id] = value;
+      } else {
+        const map = edit.spriteParams.levels[level] || (edit.spriteParams.levels[level] = {});
+        map[selEnemy] = { health: value };
+      }
+      updateSpriteStats();
+      statusMsg('已修改 #' + selEnemy.toString(16).toUpperCase() + ' 生命值为 ' + value + (spriteParamScope === 'level' ? '（第' + (level + 1) + '关覆盖）' : '（全局）'));
+    };
+    row.appendChild(label); row.appendChild(input);
+    box.appendChild(row);
+
+    const actions = document.createElement('div');
+    actions.className = 'sprite-param-actions';
+    if (spriteParamScope === 'level') {
+      const clear = document.createElement('button');
+      clear.type = 'button'; clear.className = 'tool'; clear.textContent = '清除本关覆盖';
+      clear.disabled = override == null;
+      clear.onclick = () => {
+        pushUndo();
+        if (edit.spriteParams.levels[level]) delete edit.spriteParams.levels[level][selEnemy];
+        buildSpriteParamsPanel();
+        statusMsg('已清除第' + (level + 1) + '关覆盖，恢复全局值');
+      };
+      actions.appendChild(clear);
+    }
+    const reset = document.createElement('button');
+    reset.type = 'button'; reset.className = 'tool'; reset.textContent = spriteParamScope === 'global' ? '恢复原版值' : '恢复继承值';
+    reset.onclick = () => {
+      pushUndo();
+      if (spriteParamScope === 'global') {
+        const d = edit.spriteParams.defaults && edit.spriteParams.defaults.global && edit.spriteParams.defaults.global[selEnemy];
+        edit.spriteParams.global[selEnemy] = { health: d && d.health != null ? d.health : 0 };
+        const boss = spriteParamBoss(selEnemy);
+        if (boss && boss.offsets[0] === J.ENEMY_HEALTH_BASE + selEnemy) edit.bossHp[boss.id] = edit.spriteParams.global[selEnemy].health;
+      } else if (edit.spriteParams.levels[level]) {
+        delete edit.spriteParams.levels[level][selEnemy];
+      }
+      buildSpriteParamsPanel();
+      statusMsg('已恢复精灵参数');
+    };
+    actions.appendChild(reset);
+    const boss = spriteParamBoss(selEnemy);
+    if (boss) {
+      const bossBtn = document.createElement('button');
+      bossBtn.type = 'button'; bossBtn.className = 'tool'; bossBtn.textContent = '打开 Boss 设置';
+      bossBtn.onclick = () => openBossModal();
+      actions.appendChild(bossBtn);
+    }
+    box.appendChild(actions);
+  }
+
   // ---------- level select ----------
   function buildLevelSelect() {
     const sel = $('levelSelect');
@@ -366,7 +537,7 @@
         level = next; selTile = 0;
         undoStack = []; redoStack = []; updateUndoButtons(); // 撤销栈按关隔离
         buildTypeList();
-        buildTilePalette(); buildEnemyPanel(); buildPalettePanel(); refreshAll(); updateEnemyPerScreen();
+        buildTilePalette(); buildEnemyPanel(); buildSpriteParamsPanel(); buildPalettePanel(); refreshAll(); updateEnemyPerScreen();
       }
       updateLevelSelect();
     };
@@ -663,6 +834,10 @@
       spawns: e.spawns.map(s => (s ? s.slice() : s)),
       def: e.def.slice(),
       pal: e.pal.slice(),
+      spriteParams: edit.spriteParams ? JSON.parse(JSON.stringify(edit.spriteParams)) : null,
+      bossHp: edit.bossHp ? { ...edit.bossHp } : null,
+      bossCount: edit.bossCount ? { ...edit.bossCount } : null,
+      bossPos: edit.bossPos ? JSON.parse(JSON.stringify(edit.bossPos)) : null,
     };
   }
   function restoreLevel(l, snap) {
@@ -672,6 +847,10 @@
     e.spawns = snap.spawns.map(s => (s ? s.slice() : s));
     e.def = snap.def.slice();
     e.pal = snap.pal.slice();
+    if (snap.spriteParams) edit.spriteParams = JSON.parse(JSON.stringify(snap.spriteParams));
+    if (snap.bossHp) edit.bossHp = { ...snap.bossHp };
+    if (snap.bossCount) edit.bossCount = { ...snap.bossCount };
+    if (snap.bossPos) edit.bossPos = JSON.parse(JSON.stringify(snap.bossPos));
   }
   function pushUndo() {
     undoStack.push({ level, snap: snapshotLevel(level) });
@@ -1116,6 +1295,9 @@
       // 点已有敌人 = 选中（进入移动模式，不删除）
       enemySel = { screen: sp.screen, off: hit };
       const selId = (list[hit + 2] & 0x7F);
+      selEnemy = selId;
+      buildEnemyPanel();
+      buildSpriteParamsPanel();
       statusMsg('已选中敌人 #' + selId.toString(16).toUpperCase() + ' ' + (ENEMY_NAMES[selId] || '') + ' · 点击新位置移动 · 右键/Esc 取消');
       drawLevel();
       return;
@@ -1263,6 +1445,9 @@
         if (hit >= 0) {
           enemySel = { screen: sp.screen, off: hit };
           const selId = (list[hit + 2] & 0x7F);
+          selEnemy = selId;
+          buildEnemyPanel();
+          buildSpriteParamsPanel();
           statusMsg('已选中敌人 #' + selId.toString(16).toUpperCase() + ' ' + (ENEMY_NAMES[selId] || '') + ' · 点击新位置移动 · Esc 取消');
           drawLevel();
           return;
@@ -1830,6 +2015,7 @@
       enemyPanel.hidden = false;
       buildEnemyPanel();
     }
+    if (tab === 'params') buildSpriteParamsPanel();
   }
   document.querySelectorAll('[data-sidebar-tab]').forEach(button => {
     button.onclick = () => setSidebarTab(button.dataset.sidebarTab);
@@ -1846,6 +2032,22 @@
   };
 
   $('btnBoss').onclick = () => openBossModal();
+
+  function syncBossParamMirror() {
+    if (!edit || !edit.spriteParams) return;
+    edit.spriteParams.boss = {};
+    for (const b of J.BOSS_HP) {
+      const pos = edit.bossPos && edit.bossPos[b.id];
+      edit.spriteParams.boss[b.id] = {
+        health: edit.bossHp && edit.bossHp[b.id],
+        count: edit.bossCount && edit.bossCount[b.id],
+        pos: pos ? { x: pos.x.slice(), y: pos.y ? pos.y.slice() : null } : null,
+      };
+      if (b.spriteType != null && b.offsets[0] === J.ENEMY_HEALTH_BASE + b.spriteType && edit.spriteParams.global) {
+        edit.spriteParams.global[b.spriteType] = { health: edit.bossHp[b.id] & 0x7F };
+      }
+    }
+  }
 
   function openBossModal() {
     const modal = $('modal');
@@ -1914,6 +2116,7 @@
   }
   $('modalClose').onclick = () => { $('modal').hidden = true; };
   $('modalSave').onclick = () => {
+    pushUndo();
     for (const input of document.querySelectorAll('#modalBody input')) {
       const v = parseInt(input.value, 10);
       if (isNaN(v)) continue;
@@ -1934,11 +2137,14 @@
       }
       else edit.bossHp[id] = Math.max(0, Math.min(127, v));
     }
+    syncBossParamMirror();
     $('modal').hidden = true;
   };
   $('modalReset').onclick = () => {
+    pushUndo();
     for (const b of J.BOSS_HP) edit.bossHp[b.id] = b.defaultValue;
     for (const b of J.BOSS_COUNT) edit.bossCount[b.id] = b.defaultValue;
+    syncBossParamMirror();
     openBossModal();
   };
 

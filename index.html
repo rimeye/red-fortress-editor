@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>赤色要塞 · Jackal 关卡编辑器</title>
+<link rel="stylesheet" href="style.css?v=20260823a">
+</head>
+<body>
+<header class="toolbar">
+  <div class="brand">
+    <span class="logo">🎖️</span>
+    <div class="brand-text">
+      <h1>赤色要塞 <span class="en">Jackal</span></h1>
+      <div class="sub">关卡编辑器 · 触屏绘制 · 生成 NES ROM</div>
+    </div>
+  </div>
+  <div class="sprite-stats" id="spriteStats" title="实时统计：精灵总数 / 每屏数量 / 各类型数量 / 超上限的屏（自下而上，屏1=起点）"></div>
+  <div class="toolbar-controls">
+    <select id="levelSelect" title="选择关卡"></select>
+    <button id="btnLives" class="btn" title="修改初始命数">命数</button>
+    <button id="btnBoss" class="btn" title="修改 Boss 血量">Boss 血量</button>
+    <button id="btnLoad" class="btn btn-ghost">载入 ROM</button>
+    <button id="btnDownload" class="btn btn-primary">⬇ 生成 ROM</button>
+  </div>
+</header>
+
+<div class="layout">
+  <main class="canvas-panel">
+    <div class="canvas-scroll" id="canvasScroll">
+      <div id="canvasSpacer">
+        <canvas id="levelCanvas"></canvas>
+      </div>
+    </div>
+    <div class="canvas-hint">✋ 点按 / 拖拽绘制 · 关卡自下而上（底部为起点）· 16 格宽 × 每屏 8 格高<span id="tileInfo" class="tile-info"></span></div>
+  </main>
+
+  <aside class="sidebar">
+    <section class="panel">
+      <h2>工具</h2>
+      <div class="tool-row">
+        <button id="toolBrush" class="tool active">🖌️ 画笔</button>
+        <button id="toolEraser" class="tool">🧹 橡皮</button>
+        <button id="toolPan" class="tool">✋ 移动</button>
+        <button id="toolEnemy" class="tool">👾 敌人</button>
+        <button id="toolSelect" class="tool">⬚ 选框</button>
+        <button id="toolBossPos" class="tool">📍 Boss位置</button>
+      </div>
+      <div class="tool-row">
+        <button id="btnUndo" class="tool">↩️ 撤销</button>
+        <button id="btnRedo" class="tool">↪️ 恢复</button>
+        <span class="muted" style="font-size:11px;align-self:center;">Ctrl+Z / Ctrl+Y</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>标题版权 <span class="muted">(最下方 4 行)</span></h2>
+      <div id="copyrightLines"></div>
+      <p class="hint">编辑标题画面最下方 4 行版权文字（替换原版权行）。支持 A-Z、空格、标点 , . - ' !；<b>数字在原版字体里是方块</b>（"1 PLAYER" 的数字也一样），建议用字母代替。每行长度上限 15/26/13/24 字符。生成 ROM 时生效。</p>
+    </section>
+
+    <section class="panel">
+      <h2>关卡长度 <span id="screenInfo" class="muted"></span></h2>
+      <div class="tool-row">
+        <button id="btnInsertScreen" class="tool">＋ 加长地图</button>
+        <button id="btnDeleteScreen" class="tool">－ 缩短地图</button>
+      </div>
+      <p class="hint">「加长地图」会在 Boss 前插入空白段（空白屏在生成 ROM 时共用同一空白块，省空间）。每关屏数上限是引擎纵向滚动上限：前 5 关约 129 屏，<b>第 6 关为 128 屏</b>——超过后 Boss 屏无法到达、玩家会回绕到第 1 屏继续走。</p>
+    </section>
+
+    <section class="panel">
+      <h2>🎲 随机生成</h2>
+      <div class="tool-row">
+        <button id="btnRandom" class="tool">🎲 随机生成</button>
+      </div>
+      <div class="tool-row copy-opts">
+        <label class="chk"><input type="checkbox" id="randMap" checked> 地图</label>
+        <label class="chk"><input type="checkbox" id="randSprite" checked> 精灵</label>
+      </div>
+      <div class="tool-row copy-opts">
+        <span class="muted" style="font-size:12px;">生成等级</span>
+        <select id="randDiff" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:3px;padding:2px 4px;">
+          <option value="auto" selected>随机</option>
+          <option value="1">1级（最简）</option>
+          <option value="2">2级</option>
+          <option value="3">3级</option>
+          <option value="4">4级</option>
+          <option value="5">5级</option>
+          <option value="6">6级</option>
+          <option value="7">7级</option>
+          <option value="8">8级</option>
+          <option value="9">9级</option>
+          <option value="10">10级（最强/最多）</option>
+        </select>
+        <span class="muted" style="font-size:12px;margin-left:8px;">每屏敌人数</span>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="randPerScreen" class="txt-input" style="width:52px" maxlength="2" value="0" autocomplete="off" title="每屏敌人数量（0=按等级自动）">
+        <span id="enemyPerScreen" class="muted" style="font-size:12px;margin-left:6px;"></span>
+        <span class="muted" style="font-size:12px;margin-left:8px;">精灵总数</span>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="randSpriteTotal" class="txt-input" style="width:60px" maxlength="3" value="0" autocomplete="off" title="精灵设施总数（0=随等级自动；单关极限见提示）">
+        <span id="spriteTotalHint" class="muted" style="font-size:12px;margin-left:4px;"></span>
+      </div>
+      <div class="tool-row copy-opts">
+        <span class="muted" style="font-size:12px;">精灵池</span>
+        <button type="button" id="btnTypeAll" style="font-size:11px;padding:1px 6px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;">全选</button>
+        <button type="button" id="btnTypeClear" style="font-size:11px;padding:1px 6px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;">清空</button>
+        <span id="typeList" class="pool-opts" style="max-height:150px;overflow-y:auto;width:100%;"></span>
+      </div>
+      <div class="tool-row copy-opts">
+        <span class="muted" style="font-size:12px;">每屏奇偶占比</span>
+        <select id="randParity" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:3px;padding:2px 4px;">
+          <option value="even" selected>正常(全偶y)</option>
+          <option value="odd">满级才出(全奇y)</option>
+          <option value="mixed">混合占比</option>
+        </select>
+        <input type="range" id="randOddRatio" min="0" max="100" value="30" style="width:70px;vertical-align:middle;" title="奇y占比">
+        <span id="oddRatioVal" class="muted" style="font-size:12px;">30%奇</span>
+        <span class="muted" style="font-size:12px;margin-left:6px;">前</span>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="randOddStart" class="txt-input" style="width:60px" maxlength="2" value="3" autocomplete="off" title="前N屏无奇y（武器未满级）">
+        <span class="muted" style="font-size:12px;">屏无奇y</span>
+        <span class="muted" style="font-size:12px;margin-left:8px;">种子</span>
+        <input type="text" id="randSeed" class="txt-input" style="width:90px" placeholder="留空随机">
+      </div>
+      <p class="hint">生成等级越高敌人越强、星星/道具越多。Boss 默认不随机（保持原版）；勾选「Boss」可随机数量/血量/位置。奇y=满级武器才出现（Bank7.ASM:6596）。</p>
+    </section>
+
+    <section class="panel">
+      <h2>复制粘贴 <span class="muted">(整段)</span></h2>
+      <div class="tool-row">
+        <button id="btnCopy" class="tool">📋 复制</button>
+        <button id="btnPaste" class="tool">📌 粘贴</button>
+      </div>
+      <div class="tool-row copy-opts">
+        <label class="chk"><input type="checkbox" id="copyTiles" checked> 图块</label>
+        <label class="chk"><input type="checkbox" id="copyEnemies" checked> 敌人</label>
+      </div>
+      <p class="hint">用「选框」工具拖拽框选区域 → 点「复制」→ 点「粘贴」后移动鼠标看黄色预览，点击落定粘贴。Esc 取消。</p>
+      <h2>选屏复制 <span class="muted">(第几屏到第几屏)</span></h2>
+      <div class="tool-row copy-opts">
+        <span class="muted" style="font-size:12px;">从</span>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="scrFrom" class="txt-input" style="width:52px" maxlength="3" placeholder="1" autocomplete="off">
+        <span class="muted" style="font-size:12px;">到</span>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="scrTo" class="txt-input" style="width:52px" maxlength="3" placeholder="1" autocomplete="off">
+        <button id="btnCopyScreens" class="tool">📋 复制屏</button>
+      </div>
+      <div class="tool-row copy-opts">
+        <span class="muted" style="font-size:12px;">粘贴到第</span>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="scrPasteAt" class="txt-input" style="width:52px" maxlength="3" placeholder="1" autocomplete="off">
+        <span class="muted" style="font-size:12px;">屏</span>
+        <button id="btnPasteScreens" class="tool">📌 粘贴屏</button>
+      </div>
+      <p class="hint">按屏号（从下往上数）整屏复制图块+敌人，再粘贴覆盖到目标位置起的多屏。复制/粘贴屏同样可用「撤销」。</p>
+    </section>
+
+    <section class="panel">
+      <h2>批量删除 <span class="muted">(精灵/地图)</span></h2>
+      <div class="tool-row">
+        <button id="btnClearAllSprites" class="tool">🗑 删全部精灵</button>
+        <button id="btnClearAllMap" class="tool">🗑 删全部地图</button>
+      </div>
+      <div class="tool-row">
+        <button id="btnClearSelSprites" class="tool">🗑 删选定精灵</button>
+        <button id="btnClearSelMap" class="tool">🗑 删选定地图</button>
+      </div>
+      <p class="hint">「删全部」作用于整关所有屏；「删选定」作用于上面「选屏复制」里的「从/到」屏号范围。删精灵保留 Boss 触发标记（0xF0/0xF1/0xF2）；删地图把图块清成空白。Boss 战区（Boss 屏及其上方区域）在删全部/删选定时都会自动保留，不会被清空。</p>
+    </section>
+
+    <section class="panel">
+      <h2>视图缩放</h2>
+      <div class="tool-row">
+        <button id="zoomOut" class="tool">－ 缩小</button>
+        <button id="zoomLabel" class="tool zoom-label">100%</button>
+        <button id="zoomIn" class="tool">＋ 放大</button>
+      </div>
+      <div class="tool-row">
+        <button id="zoomReset" class="tool">适应 1:1</button>
+        <button id="btnScrollUp" class="tool">⬆ 上移一段</button>
+        <button id="btnScrollDown" class="tool">⬇ 下移一段</button>
+      </div>
+      <p class="hint">滚轮滚动 · Ctrl+滚轮 或 按钮缩放 · 「移动」工具可拖拽平移</p>
+    </section>
+
+    <section class="panel" id="tilePanelSection">
+      <h2>图块 <span class="muted">(点击选择)</span></h2>
+      <div class="tool-row">
+        <span class="muted" style="font-size:12px;">刷子</span>
+        <button id="brush1" class="tool brush active">1×1</button>
+        <button id="brush2" class="tool brush">2×2</button>
+        <button id="brush3" class="tool brush">3×3</button>
+        <button id="brush4" class="tool brush">4×4</button>
+      </div>
+      <div class="tool-row">
+        <button id="btnFillRange" class="tool">🗖 批量填充</button>
+      </div>
+      <div id="tilePalette" class="tile-palette"></div>
+    </section>
+
+    <section class="panel" id="enemyPanelSection" hidden>
+      <h2>敌人 <span class="muted">(点击选择类型)</span></h2>
+      <div id="enemyPanel" class="enemy-panel"></div>
+      <p class="hint">「敌人」工具：点击空白放置敌人，点击已有敌人删除。敌人按 x×4 像素、y 触发点显示。</p>
+    </section>
+
+    <section class="panel">
+      <h2>全局颜色 <span class="muted">(点击色块修改)</span></h2>
+      <div id="palettePanel" class="palette-panel"></div>
+      <div id="palettePicker" class="palette-picker" hidden></div>
+      <p class="hint">4 组背景色 + 4 组精灵色，每组 4 色。点色块弹出 64 色选择器；第 1 格是透明/背景色（改它影响整关背景）。</p>
+    </section>
+  </aside>
+</div>
+
+<div class="statusbar"><span id="status"></span></div>
+
+<div class="modal-mask" id="modal" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modalTitle">Boss 血量</h2>
+      <button id="modalClose" class="modal-x">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <button id="modalReset" class="btn btn-ghost">恢复默认</button>
+      <button id="modalSave" class="btn btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="lengthenModal" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="lengthenTitle">加长地图</h2>
+      <button id="lengthenClose" class="modal-x">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" id="lengthenInfo"></p>
+      <div class="tool-row">
+        <span class="muted" style="font-size:13px;">要加长</span>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" id="lengthenCount" class="txt-input" maxlength="4" value="1" autocomplete="off" style="width:96px;background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:3px;padding:4px 6px;font-size:14px;">
+        <span class="muted" style="font-size:13px;">屏（会在 Boss 前插入空白段）</span>
+      </div>
+      <div class="tool-row copy-opts" style="margin-top:8px;">
+        <label class="chk"><input type="checkbox" id="lengthenOverride"> 超出限制</label>
+        <span class="muted" id="lengthenOverrideHint" style="font-size:12px;margin-left:6px;">勾选后可输入超过上限的屏数（默认不选，仍受上限限制）</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="lengthenCancel" class="btn btn-ghost">取消</button>
+      <button id="lengthenOk" class="btn btn-primary">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="uiModal" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="uiModalTitle"></h2>
+      <button id="uiModalClose" class="modal-x">✕</button>
+    </div>
+    <div class="modal-body" id="uiModalBody"></div>
+    <div class="modal-foot" id="uiModalFoot"></div>
+  </div>
+</div>
+
+<script src="rom.js?v=20260821b"></script>
+<script src="palette.js?v=20260821b"></script>
+<script src="patch.js?v=20260823e"></script>
+<script src="rom-data.js?v=20260821b"></script>
+<script src="gen-core.js?v=20260823f"></script>
+<script src="gen-terrain.js?v=20260823al"></script>
+<script src="levels/level-1.js?v=20260823a"></script>
+<script src="levels/level-2.js?v=20260823a"></script>
+<script src="levels/level-3.js?v=20260823a"></script>
+<script src="levels/level-4.js?v=20260823a"></script>
+<script src="levels/level-5.js?v=20260823a"></script>
+<script src="levels/level-6.js?v=20260823a"></script>
+<script src="gen-content.js?v=20260823q"></script>
+<script src="gen-connect.js?v=20260823a"></script>
+<script src="gen-main.js?v=20260823k"></script>
+<script src="app.js?v=20260823f"></script>
+</body>
+</html>

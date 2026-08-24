@@ -13,6 +13,9 @@
   let brushSize = 1;     // brush size in tiles (1x1, 2x2, ...)
   let dragBoss = null;    // { id, k } — boss position being dragged
   let selEnemy = 1;      // selected enemy type (object ID)
+  // Enemy spawn condition encoded by the Y low bit in the NES spawn table.
+  // 0 = normal/any weapon level, 1 = max weapon only.
+  let enemyPlaceCondition = 'normal';
   let spriteParamScope = 'global'; // 'global' or 'level'
   let enemySel = null;     // { screen, off } — selected enemy entry (move mode)
   let selStart = null;     // {x, y} drag start in canvas px
@@ -301,6 +304,84 @@
   }
 
   // ---------- enemy panel ----------
+  function enemyConditionFromY(y) {
+    return (y & 1) ? 'maxWeapon' : 'normal';
+  }
+
+  function selectedEnemyEntry() {
+    if (!enemySel || !edit || !edit.levels[level]) return null;
+    const list = edit.levels[level].spawns[enemySel.screen];
+    if (!list || enemySel.off < 0 || enemySel.off + 2 >= list.length) return null;
+    const y = list[enemySel.off];
+    if (y >= 0xF0 || y === 0xEF) return null;
+    return { list, off: enemySel.off, y, type: list[enemySel.off + 2] & 0x7F };
+  }
+
+  function setSelectedEnemyCondition(condition) {
+    const entry = selectedEnemyEntry();
+    if (!entry) {
+      enemyPlaceCondition = condition;
+      return;
+    }
+    const next = condition === 'maxWeapon' ? (entry.y | 1) : (entry.y & 0xFE);
+    if (next === entry.y) return;
+    pushUndo();
+    entry.list[entry.off] = next & 0xFF;
+    enemyPlaceCondition = condition;
+    buildEnemyPanel();
+    drawLevel();
+    statusMsg(condition === 'maxWeapon' ? '已设置为满级武器才出现' : '已设置为普通武器条件出现');
+  }
+
+  function buildEnemyConditionControls(box) {
+    const selected = selectedEnemyEntry();
+    const row = document.createElement('div');
+    row.className = 'enemy-condition-row';
+    const label = document.createElement('span');
+    label.className = 'muted';
+    label.textContent = selected ? '选中敌人出现条件' : '新放置敌人出现条件';
+    const select = document.createElement('select');
+    select.className = 'enemy-condition-select';
+    const current = selected ? enemyConditionFromY(selected.y) : enemyPlaceCondition;
+    const options = [
+      ['normal', '普通条件（偶数 Y）'],
+      ['maxWeapon', '满级武器才出现（奇数 Y）'],
+      ['secondLoop', '二周目才出现（ROM 未确认）'],
+    ];
+    for (const [value, text] of options) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = text;
+      opt.selected = value === current;
+      if (value === 'secondLoop') opt.disabled = true;
+      select.appendChild(opt);
+    }
+    select.value = current;
+    select.title = '奇数 Y 是原版满级武器条件；二周目条件尚未找到真实 ROM 读取位';
+    select.onchange = () => {
+      if (select.value === 'secondLoop') {
+        select.value = selected ? enemyConditionFromY(selected.y) : enemyPlaceCondition;
+        statusMsg('原版未确认二周目独立生成条件，未修改数据');
+        return;
+      }
+      setSelectedEnemyCondition(select.value);
+      if (!selected) {
+        buildEnemyPanel();
+        statusMsg(select.value === 'maxWeapon' ? '新放置敌人将使用奇数 Y' : '新放置敌人将使用偶数 Y');
+      }
+    };
+    row.appendChild(label);
+    row.appendChild(select);
+    box.appendChild(row);
+
+    const note = document.createElement('div');
+    note.className = 'enemy-condition-note';
+    note.textContent = selected
+      ? '当前记录 Y=$' + selected.y.toString(16).toUpperCase().padStart(2, '0') + '；奇数位由游戏在生成时检查。'
+      : '这是敌人生成记录的条件，不是地图上的奇偶列位置。';
+    box.appendChild(note);
+  }
+
   function buildEnemyPanel() {
     const box = $('enemyPanel');
     if (!box) return;
@@ -309,6 +390,7 @@
     hint.className = 'enemy-hint';
     hint.textContent = '① 点选敌人类型 → ② 点击画布放置 · 点已有敌人选中（显示名称）后点击新位置移动 · 右键删除/取消 · Esc 取消';
     box.appendChild(hint);
+    buildEnemyConditionControls(box);
     // 只保留有用的类型：ENEMY_NAMES 命名过的 + 各关 spawn 表实际出现过的类型
     const ids = new Set();
     for (const k of Object.keys(ENEMY_NAMES)) ids.add(Number(k));
@@ -353,7 +435,7 @@
       span.textContent = '#' + id.toString(16).toUpperCase() + ' ' + name;
       btn.appendChild(cvs);
       btn.appendChild(span);
-      btn.onclick = () => { selEnemy = id; buildEnemyPanel(); buildSpriteParamsPanel(); };
+      btn.onclick = () => { selEnemy = id; enemySel = null; buildEnemyPanel(); buildSpriteParamsPanel(); };
       box.appendChild(btn);
     }
   }
@@ -447,6 +529,18 @@
       row.appendChild(label);
       row.appendChild(select);
       box.appendChild(row);
+      if (entry.sites.length > 1) {
+        const siteHint = document.createElement('div');
+        siteHint.className = 'boss-companion-site-hint';
+        siteHint.textContent = '该伴随在 Boss 流程中有 ' + entry.sites.length + ' 个自动投放点，修改后同步生效。';
+        box.appendChild(siteHint);
+      }
+      if (entry.table) {
+        const tableHint = document.createElement('div');
+        tableHint.className = 'boss-companion-site-hint';
+        tableHint.textContent = '来自 ROM 的按关卡运行时伴随表，不写入地图。';
+        box.appendChild(tableHint);
+      }
       if (entry.weaponGate && entry.weaponGate.length) {
         const gateRow = document.createElement('div');
         gateRow.className = 'sprite-param-row boss-runtime-row';
@@ -473,6 +567,11 @@
         gateRow.appendChild(gateLabel);
         gateRow.appendChild(gateSelect);
         box.appendChild(gateRow);
+      } else {
+        const gateHint = document.createElement('div');
+        gateHint.className = 'boss-companion-site-hint';
+        gateHint.textContent = '最低火力：不限制（ROM 未发现独立武器等级判断）';
+        box.appendChild(gateHint);
       }
     }
   }
@@ -1376,7 +1475,13 @@
       const type = srcList[off + 2];
       const oldX = srcList[off + 1];
       let y = Math.round(ROWS * TILE - 1 - sp.sy) & ~3, x = Math.floor(cx / 4);
-      if (y > 0xEE) y = 0xEE;
+      if (enemyPlaceCondition === 'maxWeapon') {
+        y |= 1;
+        if (y === 0xEF) y = 0xED;
+      }
+      if (y > (enemyPlaceCondition === 'maxWeapon' ? 0xED : 0xEE)) {
+        y = enemyPlaceCondition === 'maxWeapon' ? 0xED : 0xEE;
+      }
       if (y < 0) y = 0;
       if (x < 0) x = 0; if (x > 0xFF) x = 0xFF;
       x |= (oldX & 0x80); // 保留屏底生成标志
@@ -1407,6 +1512,7 @@
       enemySel = { screen: sp.screen, off: hit };
       const selId = (list[hit + 2] & 0x7F);
       selEnemy = selId;
+      enemyPlaceCondition = enemyConditionFromY(list[hit]);
       buildEnemyPanel();
       buildSpriteParamsPanel();
       statusMsg('已选中敌人 #' + selId.toString(16).toUpperCase() + ' ' + (ENEMY_NAMES[selId] || '') + ' · 点击新位置移动 · 右键/Esc 取消');
@@ -1415,7 +1521,13 @@
     }
     // 空白 → 放置当前选中的敌人 (spawn y is bottom-up; 对齐 ≡0 mod4 保证滚动触发)
     let y = (Math.round(ROWS * TILE - 1 - sp.sy) & ~3), x = Math.floor(cx / 4);
-    if (y > 0xEE) y = 0xEE;
+    if (enemyPlaceCondition === 'maxWeapon') {
+      y |= 1;
+      if (y === 0xEF) y = 0xED;
+    }
+    if (y > (enemyPlaceCondition === 'maxWeapon' ? 0xED : 0xEE)) {
+      y = enemyPlaceCondition === 'maxWeapon' ? 0xED : 0xEE;
+    }
     if (y < 0) y = 0;
     if (x < 0) x = 0; if (x > 0xFF) x = 0xFF;
     pushUndo();
@@ -1557,6 +1669,7 @@
           enemySel = { screen: sp.screen, off: hit };
           const selId = (list[hit + 2] & 0x7F);
           selEnemy = selId;
+          enemyPlaceCondition = enemyConditionFromY(list[hit]);
           buildEnemyPanel();
           buildSpriteParamsPanel();
           statusMsg('已选中敌人 #' + selId.toString(16).toUpperCase() + ' ' + (ENEMY_NAMES[selId] || '') + ' · 点击新位置移动 · Esc 取消');
@@ -2294,9 +2407,9 @@
     if(!el || !slider) return;
     const v = parseInt(slider.value,10)||30;
     const m = mode ? mode.value : 'even';
-    if(m === 'mixed'){ el.textContent = v + '%奇y'; slider.style.display=''; }
-    else if(m === 'odd'){ el.textContent = '100%奇y'; slider.style.display='none'; }
-    else { el.textContent = '0%奇y'; slider.style.display='none'; }
+    if(m === 'mixed'){ el.textContent = v + '%满级条件'; slider.style.display=''; }
+    else if(m === 'odd'){ el.textContent = '100%满级条件'; slider.style.display='none'; }
+    else { el.textContent = '0%满级条件'; slider.style.display='none'; }
   }
   const _rp = $('randParity'), _ro = $('randOddRatio');
   if(_rp) _rp.onchange = updateOddRatio;

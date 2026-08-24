@@ -298,7 +298,8 @@
     for (const b of J.BOSS_COUNT) edit.bossCount[b.id] = b.fixed ? b.defaultValue : rom[b.offset];
     for (const b of (J.BOSS_COMPANIONS || [])) {
       const site = b.sites && b.sites[0];
-      edit.bossCompanions[b.id] = site && rom[site.offset - 1] === site.opcode ? rom[site.offset] : b.defaultValue;
+      edit.bossCompanions[b.id] = site && (site.opcode == null || rom[site.offset - 1] === site.opcode)
+        ? rom[site.offset] : b.defaultValue;
       const gate = b.weaponGate && b.weaponGate[0];
       edit.bossCompanionWeaponReq[b.id] = gate && rom[gate.offset - 1] === gate.opcode
         ? rom[gate.offset] : b.defaultWeaponLevel;
@@ -619,7 +620,7 @@
     for (const b of (J.BOSS_COMPANIONS || [])) {
       for (const site of (b.sites || [])) {
         const at = site.offset;
-        if (rom[at - 1] !== site.opcode) {
+        if (site.opcode != null && rom[at - 1] !== site.opcode) {
           throw new Error('无法识别第' + (b.level + 1) + '关 Boss 伴随投放点 $' + (at - 1).toString(16).toUpperCase());
         }
         const selected = edit.bossCompanions && edit.bossCompanions[b.id];

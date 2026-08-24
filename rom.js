@@ -75,23 +75,36 @@
   ];
 
   // Boss 运行时伴随对象。这里不是地图 spawn，也不经过 structSprites。
-  // site.offset 指向 LDA #$XX 的立即数，前一个字节必须是 $A9。
+  // site.offset 指向运行时伴随类型字节；普通槽位是 LDA #$XX 的立即数，
+  // table 槽位来自 ROM 的按关卡伴随表，不应按指令校验。
   // sites 为空表示该 Boss 流程没有独立、可安全改写的伴随投放点，
   // 不能伪造一个地图对象或把 Boss 主体误当成伴随。
   const BOSS_COMPANION_TYPES = [
     0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x0E,0x0F,0x12,
     0x23,0x24,0x26,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x31,0x32,0x33,0x35,0x39,
-    0x42,0x46,0x47,0x4A,0x4B,
+    0x3B,0x42,0x43,0x46,
   ];
   const BOSS_COMPANIONS = [
     { id:'l1boss',     level:0, name:'第1关 Boss 运行时伴随',       sites:[{ offset:0x18817, opcode:0xA9 }], defaultValue:0x46 },
+    { id:'l1tableA',   level:0, name:'第1关 Boss 伴随槽 A',          sites:[{ offset:0x1BD71, opcode:null }], defaultValue:0x00, table:true },
+    { id:'l1tableB',   level:0, name:'第1关 Boss 伴随槽 B',          sites:[{ offset:0x1BD77, opcode:null }], defaultValue:0x00, table:true },
+    { id:'l2tableA',   level:1, name:'第2关 Boss 伴随槽 A',          sites:[{ offset:0x1BD72, opcode:null }], defaultValue:0x3B, table:true },
+    { id:'l2tableB',   level:1, name:'第2关 Boss 伴随槽 B',          sites:[{ offset:0x1BD78, opcode:null }], defaultValue:0x01, table:true },
     { id:'l2boss',     level:1, name:'第2关 Boss 运行时伴随',       sites:[{ offset:0x19064, opcode:0xA9 }], defaultValue:0x07, weaponGate:[{ offset:0x18F54, opcode:0xC9 }, { offset:0x19025, opcode:0xC9 }], defaultWeaponLevel:2 },
+    { id:'l3tableA',   level:2, name:'第3关 Boss 伴随槽 A',          sites:[{ offset:0x1BD73, opcode:null }], defaultValue:0x00, table:true },
+    { id:'l3tableB',   level:2, name:'第3关 Boss 伴随槽 B',          sites:[{ offset:0x1BD79, opcode:null }], defaultValue:0x00, table:true },
     { id:'l3boss',     level:2, name:'第3关 Boss 运行时伴随',       sites:[{ offset:0x1984E, opcode:0xA9 }], defaultValue:0x07, weaponGate:[{ offset:0x1980F, opcode:0xC9 }], defaultWeaponLevel:2 },
+    { id:'l4tableA',   level:3, name:'第4关 Boss 伴随槽 A',          sites:[{ offset:0x1BD74, opcode:null }], defaultValue:0x00, table:true },
+    { id:'l4tableB',   level:3, name:'第4关 Boss 伴随槽 B',          sites:[{ offset:0x1BD7A, opcode:null }], defaultValue:0x00, table:true },
     { id:'l4airdrop',  level:3, name:'第4关 Boss 空降伴随',         sites:[{ offset:0x1A8DA, opcode:0xA9 }], defaultValue:0x42 },
     { id:'l4infantry', level:3, name:'第4关 Boss 步兵伴随',         sites:[{ offset:0x1AA54, opcode:0xA9 }], defaultValue:0x01 },
+    { id:'l5tableA',   level:4, name:'第5关 Boss 伴随槽 A',          sites:[{ offset:0x1BD75, opcode:null }], defaultValue:0x3B, table:true },
+    { id:'l5tableB',   level:4, name:'第5关 Boss 伴随槽 B',          sites:[{ offset:0x1BD7B, opcode:null }], defaultValue:0x01, table:true },
     { id:'l5gate',     level:4, name:'第5关 Boss 电门流程伴随',     sites:[{ offset:0x1AF39, opcode:0xA9 }], defaultValue:0x26 },
     { id:'l5door',     level:4, name:'第5关 Boss 门流程伴随',       sites:[{ offset:0x1AF62, opcode:0xA9 }], defaultValue:0x31 },
     { id:'l5explode',  level:4, name:'第5关 Boss 结束流程伴随',     sites:[{ offset:0x1AF75, opcode:0xA9 }], defaultValue:0x46 },
+    { id:'l6tableA',   level:5, name:'第6关 Boss 伴随槽 A',          sites:[{ offset:0x1BD76, opcode:null }], defaultValue:0x43, table:true },
+    { id:'l6tableB',   level:5, name:'第6关 Boss 伴随槽 B',          sites:[{ offset:0x1BD7C, opcode:null }], defaultValue:0x02, table:true },
     { id:'l6final',    level:5, name:'第6关 最终 Boss 红坦克伴随', sites:[{ offset:0x1B7D8, opcode:0xA9 }], defaultValue:0x07 },
   ];
   for (const entry of BOSS_COMPANIONS) {

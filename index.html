@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>赤色要塞 · Jackal 关卡编辑器</title>
-<link rel="stylesheet" href="style.css?v=20260824i">
+<link rel="stylesheet" href="style.css?v=20260824m">
 </head>
 <body>
 <header class="toolbar">
@@ -139,21 +139,21 @@
         <span id="typeList" class="pool-opts" style="max-height:150px;overflow-y:auto;width:100%;"></span>
       </div>
       <div class="tool-row copy-opts">
-        <span class="muted" style="font-size:12px;">每屏奇偶占比</span>
+        <span class="muted" style="font-size:12px;">每屏出现条件</span>
         <select id="randParity" style="background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:3px;padding:2px 4px;">
-          <option value="even" selected>正常(全偶y)</option>
-          <option value="odd">满级才出(全奇y)</option>
-          <option value="mixed">混合占比</option>
+          <option value="even" selected>普通条件</option>
+          <option value="odd">满级武器才出现</option>
+          <option value="mixed">混合条件</option>
         </select>
         <input type="range" id="randOddRatio" min="0" max="100" value="30" style="width:70px;vertical-align:middle;" title="奇y占比">
-        <span id="oddRatioVal" class="muted" style="font-size:12px;">30%奇</span>
+        <span id="oddRatioVal" class="muted" style="font-size:12px;">30%满级条件</span>
         <span class="muted" style="font-size:12px;margin-left:6px;">前</span>
         <input type="text" inputmode="numeric" pattern="[0-9]*" id="randOddStart" class="txt-input" style="width:60px" maxlength="2" value="3" autocomplete="off" title="前N屏无奇y（武器未满级）">
-        <span class="muted" style="font-size:12px;">屏无奇y</span>
+        <span class="muted" style="font-size:12px;">屏不出现满级条件敌人</span>
         <span class="muted" style="font-size:12px;margin-left:8px;">种子</span>
         <input type="text" id="randSeed" class="txt-input" style="width:90px" placeholder="留空随机">
       </div>
-      <p class="hint">生成等级越高敌人越强、星星/道具越多。Boss 默认不随机（保持原版）；勾选「Boss」可随机数量/血量/位置。奇y=满级武器才出现（Bank7.ASM:6596）。</p>
+      <p class="hint">生成等级越高敌人越强、星星/道具越多。Boss 默认不随机（保持原版）；勾选「Boss」可随机数量/血量/位置。满级武器条件由 ROM 敌人 Y 坐标最低位实现（奇数 Y，Bank7.ASM:6596），不是按地图列奇偶摆放。</p>
     </section>
 
     <section class="panel panel-collapsible panel-collapsed" data-sidebar-group="copy">
@@ -292,7 +292,7 @@
   </div>
 </div>
 
-<script src="rom.js?v=20260824i"></script>
+<script src="rom.js?v=20260824l"></script>
 <script src="palette.js?v=20260821b"></script>
 <script src="patch.js?v=20260823e"></script>
 <script src="rom-data.js?v=20260821b"></script>
@@ -307,6 +307,6 @@
 <script src="gen-content.js?v=20260823q"></script>
 <script src="gen-connect.js?v=20260823a"></script>
 <script src="gen-main.js?v=20260823k"></script>
-<script src="app.js?v=20260824i"></script>
+<script src="app.js?v=20260824m"></script>
 </body>
 </html>

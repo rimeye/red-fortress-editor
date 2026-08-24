@@ -478,7 +478,7 @@
     box.appendChild(title);
     const hint = document.createElement('div');
     hint.className = 'sprite-param-affected';
-    hint.textContent = '按 Boss 运行流程设置伴随对象；不写入地图、不放置画布精灵。下拉列表包含普通兵种、车辆、炮台、空中单位和已确认的特殊生成对象。';
+    hint.textContent = '按 Boss 运行流程设置伴随对象；不写入地图、不放置画布精灵。第5关门内实际有 4 个连续投放槽，原版顺序为银坦克-红坦克-红坦克-银坦克。';
     box.appendChild(hint);
     let shownLevel = -1;
     for (const entry of entries) {
@@ -500,7 +500,7 @@
       if (!entry.sites || !entry.sites.length) {
         const status = document.createElement('span');
         status.className = 'boss-companion-unavailable';
-        status.textContent = '原版无独立伴随投放点';
+        status.textContent = entry.note || '原版无独立伴随投放点';
         row.appendChild(label);
         row.appendChild(status);
         box.appendChild(row);
@@ -538,7 +538,13 @@
       if (entry.table) {
         const tableHint = document.createElement('div');
         tableHint.className = 'boss-companion-site-hint';
-        tableHint.textContent = '来自 ROM 的按关卡运行时伴随表，不写入地图。';
+        tableHint.textContent = entry.basePhase
+          ? '一阶段基地流程的运行时伴随；不属于最终大坦克。'
+          : entry.finalTank
+          ? '最终大坦克未发现独立伴随投放点；炮塔和喷火是内部组件。'
+          : entry.doorInside
+          ? '门内运行时投放槽：只影响 Boss 门打开后自动出来的对象，不写入地图。'
+          : '来自 ROM 的按关卡运行时伴随表，不写入地图。';
         box.appendChild(tableHint);
       }
       if (entry.weaponGate && entry.weaponGate.length) {

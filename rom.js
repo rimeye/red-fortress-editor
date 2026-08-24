@@ -93,14 +93,11 @@
     0x23,0x24,0x25,0x2A,0x2B,0x2C,0x2D,0x2E,0x2F,0x30,
     0x32,0x33,0x34,0x35,0x37,0x38,0x39,
     // 飞机、直升机、空降兵、激光炮和最终 Boss 炮塔
-    0x3A,0x3B,0x3C,0x3D,0x3E,0x40,0x42,0x43,0x47,0x4B,0x4C,0x4F,
-    // 原版 Boss 流程中已确认可作为生成对象的特殊类型
-    0x26,0x31,0x46,
+    0x3C,0x3D,0x3E,0x40,0x42,0x43,0x47,0x4B,0x4C,0x4F,
     // 道具对象：保留原版生成器兼容性，但不默认使用
     0x50,0x51,0x52,
   ];
   const BOSS_COMPANIONS = [
-    { id:'l1boss',     level:0, name:'第1关 Boss 运行时伴随',       sites:[{ offset:0x18817, opcode:0xA9 }], defaultValue:0x46 },
     { id:'l1tableA',   level:0, name:'第1关 Boss 伴随槽 A',          sites:[{ offset:0x1BD71, opcode:null }], defaultValue:0x00, table:true },
     { id:'l1tableB',   level:0, name:'第1关 Boss 伴随槽 B',          sites:[{ offset:0x1BD77, opcode:null }], defaultValue:0x00, table:true },
     { id:'l2tableA',   level:1, name:'第2关 Boss 伴随槽 A',          sites:[{ offset:0x1BD72, opcode:null }], defaultValue:0x3B, table:true },
@@ -113,14 +110,19 @@
     { id:'l4tableB',   level:3, name:'第4关 Boss 伴随槽 B',          sites:[{ offset:0x1BD7A, opcode:null }], defaultValue:0x00, table:true },
     { id:'l4airdrop',  level:3, name:'第4关 Boss 空降伴随',         sites:[{ offset:0x1A8DA, opcode:0xA9 }], defaultValue:0x42 },
     { id:'l4infantry', level:3, name:'第4关 Boss 步兵伴随',         sites:[{ offset:0x1AA54, opcode:0xA9 }], defaultValue:0x01 },
-    { id:'l5tableA',   level:4, name:'第5关 Boss 伴随槽 A',          sites:[{ offset:0x1BD75, opcode:null }], defaultValue:0x3B, table:true },
-    { id:'l5tableB',   level:4, name:'第5关 Boss 伴随槽 B',          sites:[{ offset:0x1BD7B, opcode:null }], defaultValue:0x01, table:true },
-    { id:'l5gate',     level:4, name:'第5关 Boss 电门流程伴随',     sites:[{ offset:0x1AF39, opcode:0xA9 }], defaultValue:0x26 },
-    { id:'l5door',     level:4, name:'第5关 Boss 门流程伴随',       sites:[{ offset:0x1AF62, opcode:0xA9 }], defaultValue:0x31 },
-    { id:'l5explode',  level:4, name:'第5关 Boss 结束流程伴随',     sites:[{ offset:0x1AF75, opcode:0xA9 }], defaultValue:0x46 },
+    { id:'l5tableA',   level:4, name:'第5关 Boss 通用伴随槽 A',       sites:[{ offset:0x1BD75, opcode:null }], defaultValue:0x3B, table:true },
+    { id:'l5tableB',   level:4, name:'第5关 Boss 通用伴随槽 B',       sites:[{ offset:0x1BD7B, opcode:null }], defaultValue:0x01, table:true },
+    // $B0DB 是 CPU 地址；在原版 bank 6 中对应 ROM $1B0EB。
+    // 门内投放流程按索引读取这 4 个字节，原版为 银-红-红-银。
+    { id:'l5doorInside0', level:4, name:'第5关 Boss 门内第1个',      sites:[{ offset:0x1B0EB, opcode:null }], defaultValue:0x23, table:true, doorInside:true },
+    { id:'l5doorInside1', level:4, name:'第5关 Boss 门内第2个',      sites:[{ offset:0x1B0EC, opcode:null }], defaultValue:0x24, table:true, doorInside:true },
+    { id:'l5doorInside2', level:4, name:'第5关 Boss 门内第3个',      sites:[{ offset:0x1B0ED, opcode:null }], defaultValue:0x24, table:true, doorInside:true },
+    { id:'l5doorInside3', level:4, name:'第5关 Boss 门内第4个',      sites:[{ offset:0x1B0EE, opcode:null }], defaultValue:0x23, table:true, doorInside:true },
     { id:'l6tableA',   level:5, name:'第6关 Boss 伴随槽 A',          sites:[{ offset:0x1BD76, opcode:null }], defaultValue:0x43, table:true },
     { id:'l6tableB',   level:5, name:'第6关 Boss 伴随槽 B',          sites:[{ offset:0x1BD7C, opcode:null }], defaultValue:0x02, table:true },
-    { id:'l6final',    level:5, name:'第6关 最终 Boss 红坦克伴随', sites:[{ offset:0x1B7D8, opcode:0xA9 }], defaultValue:0x07 },
+    { id:'l6baseRed',  level:5, name:'第6关一阶段基地伴随（红坦克）', sites:[{ offset:0x1B7D8, opcode:0xA9 }], defaultValue:0x07, basePhase:true },
+    { id:'l6finalCompanion', level:5, name:'第6关最终大坦克独立伴随', sites:[], defaultValue:0x00, finalTank:true,
+      note:'ROM 中未发现独立的伴随投放点；0x4F 炮塔和 0x4C 喷火属于大坦克内部组件。' },
   ];
   for (const entry of BOSS_COMPANIONS) {
     entry.types = BOSS_COMPANION_TYPES.slice();

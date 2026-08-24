@@ -478,7 +478,7 @@
     box.appendChild(title);
     const hint = document.createElement('div');
     hint.className = 'sprite-param-affected';
-    hint.textContent = '按 Boss 运行流程设置伴随兵种；不写入地图、不放置画布精灵。';
+    hint.textContent = '按 Boss 运行流程设置伴随对象；不写入地图、不放置画布精灵。下拉列表包含普通兵种、车辆、炮台、空中单位和已确认的特殊生成对象。';
     box.appendChild(hint);
     let shownLevel = -1;
     for (const entry of entries) {

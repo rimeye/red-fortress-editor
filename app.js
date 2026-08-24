@@ -383,6 +383,7 @@
   }
 
   function spriteParamTypeName(type) {
+    if ((type & 0x7F) === 0) return '无（不生成伴随）';
     return ENEMY_NAMES[type] || ('对象#' + type.toString(16).toUpperCase());
   }
 
@@ -397,7 +398,15 @@
     hint.className = 'sprite-param-affected';
     hint.textContent = '按 Boss 运行流程设置伴随兵种；不写入地图、不放置画布精灵。';
     box.appendChild(hint);
+    let shownLevel = -1;
     for (const entry of entries) {
+      if (entry.level !== shownLevel) {
+        shownLevel = entry.level;
+        const levelTitle = document.createElement('div');
+        levelTitle.className = 'sprite-param-section-title boss-level-title';
+        levelTitle.textContent = '第' + (shownLevel + 1) + '关 Boss 伴随选项';
+        box.appendChild(levelTitle);
+      }
       const row = document.createElement('div');
       row.className = 'sprite-param-row boss-runtime-row';
       const label = document.createElement('label');
@@ -420,7 +429,9 @@
       for (const type of types) {
         const opt = document.createElement('option');
         opt.value = type;
-        opt.textContent = '#' + type.toString(16).toUpperCase().padStart(2, '0') + ' ' + spriteParamTypeName(type);
+        opt.textContent = type === 0
+          ? '00 ' + spriteParamTypeName(type)
+          : '#' + type.toString(16).toUpperCase().padStart(2, '0') + ' ' + spriteParamTypeName(type);
         opt.selected = type === current;
         if (!entry.types.includes(type)) opt.textContent += '（当前值）';
         select.appendChild(opt);
@@ -430,7 +441,8 @@
         pushUndo();
         if (!edit.bossCompanions) edit.bossCompanions = {};
         edit.bossCompanions[entry.id] = Number(select.value) & 0x7F;
-        statusMsg('已将' + entry.name + '改为 #' + Number(select.value).toString(16).toUpperCase().padStart(2, '0') + ' ' + spriteParamTypeName(Number(select.value)));
+        const selectedType = Number(select.value) & 0x7F;
+        statusMsg('已将' + entry.name + '改为 ' + (selectedType === 0 ? '无' : '#' + selectedType.toString(16).toUpperCase().padStart(2, '0') + ' ' + spriteParamTypeName(selectedType)));
       };
       row.appendChild(label);
       row.appendChild(select);

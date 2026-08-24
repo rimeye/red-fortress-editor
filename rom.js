@@ -33,7 +33,7 @@
   const BOSS_HP = [
     { id: 'l1boss',   name: 'Level 1 Boss Tank',          spriteType: 0x0A, offsets: [ENEMY_HEALTH_BASE + 0x0A], defaultValue: 0x8A },
     { id: 'l2boss',   name: 'Level 2 Boss Statue Head',   spriteType: 0x18, offsets: [ENEMY_HEALTH_BASE + 0x18], defaultValue: 0x8F },
-    { id: 'l3boss',   name: 'Level 3 Boss Spread Turret', offsets: [0x195D6, 0x195E6],         defaultValue: 0x86 },
+    { id: 'l3boss',   name: 'Level 3 Boss Spread Turret', spriteType: 0x25, offsets: [0x195D6, 0x195E6], defaultValue: 0x86 },
     { id: 'l4boss',   name: 'Level 4 Boss Helicopter',    spriteType: 0x40, offsets: [ENEMY_HEALTH_BASE + 0x40], defaultValue: 0xA0 },
     { id: 'l5gate',   name: 'Level 5 Electric Gate',      spriteType: 0x26, offsets: [ENEMY_HEALTH_BASE + 0x26], defaultValue: 0x81 },
     { id: 'l5door',   name: 'Level 5 Boss Door',          spriteType: 0x31, offsets: [ENEMY_HEALTH_BASE + 0x31, 0x1B07C, 0x1B084], defaultValue: 0x83 },
@@ -73,6 +73,31 @@
     { id: 'l6turret', name: '第6关 激光炮', offset: 0x1B65D, defaultValue: 2, max: 50, fixed: false },
     { id: 'l6tank', name: '第6关 大坦克', offset: null, defaultValue: 1, fixed: true },
   ];
+
+  // Boss 运行时伴随对象。这里不是地图 spawn，也不经过 structSprites。
+  // site.offset 指向 LDA #$XX 的立即数，前一个字节必须是 $A9。
+  // sites 为空表示该 Boss 流程没有独立、可安全改写的伴随投放点，
+  // 不能伪造一个地图对象或把 Boss 主体误当成伴随。
+  const BOSS_COMPANION_TYPES = [
+    0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x0E,0x0F,0x12,
+    0x23,0x24,0x26,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x31,0x32,0x33,0x35,0x39,
+    0x42,0x46,0x47,0x4A,0x4B,
+  ];
+  const BOSS_COMPANIONS = [
+    { id:'l1boss',     level:0, name:'第1关 Boss 爆炸伴随',       bossType:0x0A, sites:[{ offset:0x18817, opcode:0xA9 }], defaultValue:0x46 },
+    { id:'l2boss',     level:1, name:'第2关 Boss 精灵伴随',       bossType:0x18, sites:[{ offset:0x19064, opcode:0xA9 }], defaultValue:0x07, weaponGate:[{ offset:0x18F54, opcode:0xC9 }, { offset:0x19025, opcode:0xC9 }], defaultWeaponLevel:2 },
+    { id:'l3boss',     level:2, name:'第3关 Boss 精灵伴随',       bossType:0x12, sites:[{ offset:0x1984E, opcode:0xA9 }], defaultValue:0x07, weaponGate:[{ offset:0x1980F, opcode:0xC9 }], defaultWeaponLevel:2 },
+    { id:'l4airdrop',  level:3, name:'第4关 Boss 空降伴随',       bossType:0x40, sites:[{ offset:0x1A8DA, opcode:0xA9 }], defaultValue:0x42 },
+    { id:'l4infantry', level:3, name:'第4关 Boss 步兵伴随',       bossType:0x40, sites:[{ offset:0x1AA54, opcode:0xA9 }], defaultValue:0x01 },
+    { id:'l5gate',     level:4, name:'第5关 Boss 电门伴随',       bossType:0x26, sites:[{ offset:0x1AF39, opcode:0xA9 }], defaultValue:0x26 },
+    { id:'l5door',     level:4, name:'第5关 Boss 门伴随',         bossType:0x31, sites:[{ offset:0x1AF62, opcode:0xA9 }], defaultValue:0x31 },
+    { id:'l5explode',  level:4, name:'第5关 Boss 爆炸伴随',       bossType:0x46, sites:[{ offset:0x1AF75, opcode:0xA9 }], defaultValue:0x46 },
+    { id:'l6final',    level:5, name:'第6关 最终 Boss 精灵伴随',   bossType:0x4B, sites:[{ offset:0x1B7D8, opcode:0xA9 }], defaultValue:0x07 },
+  ];
+  for (const entry of BOSS_COMPANIONS) {
+    entry.types = BOSS_COMPANION_TYPES.slice();
+    if (entry.defaultValue != null && !entry.types.includes(entry.defaultValue)) entry.types.push(entry.defaultValue);
+  }
 
   // Boss spawn position defaults (X = horizontal 0-512, Y = vertical 0-255, optional).
   // Entries repeat to 8; values map to LB/UB (X) and V (Y) tables at build time.
@@ -398,7 +423,7 @@
 
   return {
     PRG_BASE, BANK_SIZE, BANK7_ROM, LEVELS, TILE_OFFSET,
-    LIVES_OFFSET, ENEMY_HEALTH_BASE, BOSS_HP, BOSS_COUNT, BOSS_POS_DEFAULT, BOSS_POS_RANGE, POS_MAX, PTR, SPAWN, GFX, LEVEL_BG_BLOCKS,
+    LIVES_OFFSET, ENEMY_HEALTH_BASE, BOSS_HP, BOSS_COUNT, BOSS_COMPANIONS, BOSS_POS_DEFAULT, BOSS_POS_RANGE, POS_MAX, PTR, SPAWN, GFX, LEVEL_BG_BLOCKS,
     SPRITE_RUNTIME_PARAMS,
     bankRom, read16, write16,
     levelTableRom, levelTableSize, getLevelData,

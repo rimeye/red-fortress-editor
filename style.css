@@ -256,6 +256,31 @@ select {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 440px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  overscroll-behavior: contain;
+}
+.sprite-param-section-title {
+  color: var(--accent2);
+  font-size: 13px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.boss-runtime-row {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px;
+  background: rgba(0,0,0,.12);
+}
+.boss-runtime-row label { min-width: 128px; }
+.boss-runtime-row select { flex: 1 1 180px; min-width: 0; }
+.boss-companion-unavailable {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 5px 0;
 }
 .sprite-param-scope,
 .sprite-param-type-row,

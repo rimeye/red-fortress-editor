@@ -293,9 +293,16 @@
     const fix = o => (o >= FIXED_BANK_ROM && o < FIXED_BANK_END ? o + shift : o);
     const read16 = o => rom[o] | (rom[o + 1] << 8);
     const edit = { lives: rom[fix(J.LIVES_OFFSET)], copyrightLines: parseCopyrightLines(rom),
-    bossHp: {}, bossCount: {}, bossPos: {}, spriteParams: readSpriteParams(rom, fix), levels: [], palettes: [] };
+    bossHp: {}, bossCount: {}, bossPos: {}, bossCompanions: {}, bossCompanionWeaponReq: {}, spriteParams: readSpriteParams(rom, fix), levels: [], palettes: [] };
     for (const b of J.BOSS_HP) edit.bossHp[b.id] = rom[fix(b.offsets[0])] & 0x7F;
     for (const b of J.BOSS_COUNT) edit.bossCount[b.id] = b.fixed ? b.defaultValue : rom[b.offset];
+    for (const b of (J.BOSS_COMPANIONS || [])) {
+      const site = b.sites && b.sites[0];
+      edit.bossCompanions[b.id] = site && rom[site.offset - 1] === site.opcode ? rom[site.offset] : b.defaultValue;
+      const gate = b.weaponGate && b.weaponGate[0];
+      edit.bossCompanionWeaponReq[b.id] = gate && rom[gate.offset - 1] === gate.opcode
+        ? rom[gate.offset] : b.defaultWeaponLevel;
+    }
     // Boss 出现位置表：必须从 ROM 真实读取（以前直接套用 uniformPos 默认值，
     // 导致刚载入 ROM 时编辑器显示的 boss 位置就是错的，保存后还会把原版位置写坏）。
     // 每个表由一条 LDA $addr,Y 指令读取；操作数即表的 CPU 地址：
@@ -522,6 +529,8 @@
       const sameGlob = sameLevels &&
         JSON.stringify(edit.bossHp || {}) === JSON.stringify(baseEdit.bossHp || {}) &&
         JSON.stringify(edit.bossCount || {}) === JSON.stringify(baseEdit.bossCount || {}) &&
+        JSON.stringify(edit.bossCompanions || {}) === JSON.stringify(baseEdit.bossCompanions || {}) &&
+        JSON.stringify(edit.bossCompanionWeaponReq || {}) === JSON.stringify(baseEdit.bossCompanionWeaponReq || {}) &&
         JSON.stringify(edit.bossPos || {}) === JSON.stringify(baseEdit.bossPos || {}) &&
         JSON.stringify(edit.spriteParams || {}) === JSON.stringify(baseEdit.spriteParams || {}) &&
         JSON.stringify(edit.lives ?? null) === JSON.stringify(baseEdit.lives ?? null) &&
@@ -603,6 +612,27 @@
         if (b.fixed || b.offset == null) continue;
         const v = clamp(edit.bossCount[b.id] != null ? edit.bossCount[b.id] : b.defaultValue, 1, b.max != null ? b.max : 128);
         rom[b.offset] = v;
+      }
+    }
+    // Boss 伴随是运行时生成：只改 Boss 代码中的 LDA #$XX 操作数，
+    // 不写入任何关卡地图 spawn，也不创建编辑器画布对象。
+    for (const b of (J.BOSS_COMPANIONS || [])) {
+      for (const site of (b.sites || [])) {
+        const at = site.offset;
+        if (rom[at - 1] !== site.opcode) {
+          throw new Error('无法识别第' + (b.level + 1) + '关 Boss 伴随投放点 $' + (at - 1).toString(16).toUpperCase());
+        }
+        const selected = edit.bossCompanions && edit.bossCompanions[b.id];
+        const allowed = Array.isArray(b.types) && b.types.includes(selected);
+        rom[at] = (allowed ? selected : b.defaultValue) & 0x7F;
+      }
+      for (const gate of (b.weaponGate || [])) {
+        const at = gate.offset;
+        if (rom[at - 1] !== gate.opcode) {
+          throw new Error('无法识别第' + (b.level + 1) + '关 Boss 伴随火力判断点 $' + (at - 1).toString(16).toUpperCase());
+        }
+        const req = edit.bossCompanionWeaponReq && edit.bossCompanionWeaponReq[b.id];
+        rom[at] = Math.max(0, Math.min(3, Number.isFinite(req) ? req : (b.defaultWeaponLevel || 0)));
       }
     }
     // Boss spawn position tables: write edit.bossPos into fixed-bank free space (16 entries each)

@@ -362,10 +362,19 @@
     const ids = [];
     const map = J.SPRITE_RUNTIME_PARAMS && J.SPRITE_RUNTIME_PARAMS.health;
     if (!map) return ids;
+    // 攻击机投放/攻击机对象不属于本参数面板；此前的生命值入口会让
+    // 用户误以为能改变攻击机行为，因此只保留它们在“敌人”栏中的地图对象。
+    const excluded = new Set([0x3A, 0x3B]);
     for (let type = 0; type < 0x80; type++) {
       const ai = J.ENEMY_AI_MAP[type];
-      if (ai && ai.s != null) ids.push(type);
+      if (ai && ai.s != null && !excluded.has(type)) ids.push(type);
     }
+    // Boss 有些是 BG/逻辑对象（s:null），但仍有真实生命值表；这些
+    // 类型必须能从“精灵参数”栏目直接选中，例如 0x18、0x25、0x26。
+    for (const boss of (J.BOSS_HP || [])) {
+      if (boss.spriteType != null && !ids.includes(boss.spriteType)) ids.push(boss.spriteType);
+    }
+    ids.sort((a, b) => a - b);
     return ids;
   }
 
@@ -375,6 +384,85 @@
 
   function spriteParamTypeName(type) {
     return ENEMY_NAMES[type] || ('对象#' + type.toString(16).toUpperCase());
+  }
+
+  function buildBossCompanionPanel(box) {
+    const entries = J.BOSS_COMPANIONS || [];
+    if (!entries.length) return;
+    const title = document.createElement('div');
+    title.className = 'sprite-param-section-title';
+    title.textContent = 'Boss 伴随设置（运行时生成）';
+    box.appendChild(title);
+    const hint = document.createElement('div');
+    hint.className = 'sprite-param-affected';
+    hint.textContent = '按 Boss 运行流程设置伴随兵种；不写入地图、不放置画布精灵。';
+    box.appendChild(hint);
+    for (const entry of entries) {
+      const row = document.createElement('div');
+      row.className = 'sprite-param-row boss-runtime-row';
+      const label = document.createElement('label');
+      label.textContent = entry.name;
+      const select = document.createElement('select');
+      select.className = 'sprite-param-type';
+      const current = edit.bossCompanions && edit.bossCompanions[entry.id] != null
+        ? edit.bossCompanions[entry.id] : entry.defaultValue;
+      if (!entry.sites || !entry.sites.length) {
+        const status = document.createElement('span');
+        status.className = 'boss-companion-unavailable';
+        status.textContent = '原版无独立伴随投放点';
+        row.appendChild(label);
+        row.appendChild(status);
+        box.appendChild(row);
+        continue;
+      }
+      const types = Array.isArray(entry.types) ? entry.types.slice() : [];
+      if (!types.includes(current)) types.unshift(current);
+      for (const type of types) {
+        const opt = document.createElement('option');
+        opt.value = type;
+        opt.textContent = '#' + type.toString(16).toUpperCase().padStart(2, '0') + ' ' + spriteParamTypeName(type);
+        opt.selected = type === current;
+        if (!entry.types.includes(type)) opt.textContent += '（当前值）';
+        select.appendChild(opt);
+      }
+      select.title = 'Boss 运行时伴随类型';
+      select.onchange = () => {
+        pushUndo();
+        if (!edit.bossCompanions) edit.bossCompanions = {};
+        edit.bossCompanions[entry.id] = Number(select.value) & 0x7F;
+        statusMsg('已将' + entry.name + '改为 #' + Number(select.value).toString(16).toUpperCase().padStart(2, '0') + ' ' + spriteParamTypeName(Number(select.value)));
+      };
+      row.appendChild(label);
+      row.appendChild(select);
+      box.appendChild(row);
+      if (entry.weaponGate && entry.weaponGate.length) {
+        const gateRow = document.createElement('div');
+        gateRow.className = 'sprite-param-row boss-runtime-row';
+        const gateLabel = document.createElement('label');
+        gateLabel.textContent = '最低火力要求';
+        const gateSelect = document.createElement('select');
+        gateSelect.className = 'sprite-param-type';
+        const currentReq = edit.bossCompanionWeaponReq && edit.bossCompanionWeaponReq[entry.id] != null
+          ? edit.bossCompanionWeaponReq[entry.id] : (entry.defaultWeaponLevel || 0);
+        for (let req = 0; req <= 3; req++) {
+          const opt = document.createElement('option');
+          opt.value = req;
+          opt.textContent = req === 0 ? '不限制' : '至少 ' + req + ' 级';
+          if (req === currentReq) opt.selected = true;
+          gateSelect.appendChild(opt);
+        }
+        gateSelect.title = '伴随对象出现所需的玩家武器等级；原版通常为至少 2 级';
+        gateSelect.onchange = () => {
+          pushUndo();
+          if (!edit.bossCompanionWeaponReq) edit.bossCompanionWeaponReq = {};
+          edit.bossCompanionWeaponReq[entry.id] = Number(gateSelect.value) & 3;
+          statusMsg('已修改' + entry.name + '的最低火力要求');
+        };
+        gateRow.appendChild(gateLabel);
+        gateRow.appendChild(gateSelect);
+        box.appendChild(gateRow);
+      }
+    }
   }
 
   function spriteHealthGlobal(type) {
@@ -393,12 +481,14 @@
     if (!box) return;
     box.innerHTML = '';
     if (!edit || !edit.spriteParams) return;
+    buildBossCompanionPanel(box);
     const ids = spriteParamTypeIds();
     if (!ids.length) {
       box.textContent = '当前 ROM 没有可识别的精灵运行参数。';
       return;
     }
     if (!ids.includes(selEnemy)) selEnemy = ids[0];
+
 
     const hint = document.createElement('div');
     hint.className = 'enemy-hint';
@@ -446,9 +536,10 @@
 
     const affected = document.createElement('div');
     affected.className = 'sprite-param-affected';
+    const selectedAi = J.ENEMY_AI_MAP[selEnemy];
     const shared = ids.filter(id => {
       const ai = J.ENEMY_AI_MAP[id];
-      return ai && ai.s === J.ENEMY_AI_MAP[selEnemy].s;
+      return selectedAi && ai && ai.s === selectedAi.s;
     });
     affected.textContent = shared.length > 1
       ? '共享同一精灵构造器的类型：' + shared.map(id => '#' + id.toString(16).toUpperCase()).join('、')
@@ -462,7 +553,11 @@
     const input = document.createElement('input');
     input.type = 'number'; input.min = 0; input.max = 127; input.step = 1;
     const override = spriteHealthLevelOverride(selEnemy);
-    input.value = spriteParamScope === 'level' && override != null ? override : spriteHealthGlobal(selEnemy);
+    const selectedBoss = spriteParamBoss(selEnemy);
+    const nativeBossValue = selectedBoss && edit.bossHp && edit.bossHp[selectedBoss.id] != null
+      ? (edit.bossHp[selectedBoss.id] & 0x7F) : null;
+    input.value = spriteParamScope === 'level' && override != null
+      ? override : (nativeBossValue != null ? nativeBossValue : spriteHealthGlobal(selEnemy));
     input.title = spriteParamScope === 'level' && override == null ? '当前关尚未覆盖，正在继承全局值' : '生命值 0-127';
     let undoTaken = false;
     input.onfocus = () => { undoTaken = false; };
@@ -475,7 +570,7 @@
       if (spriteParamScope === 'global') {
         edit.spriteParams.global[selEnemy] = { health: value };
         const boss = spriteParamBoss(selEnemy);
-        if (boss && boss.offsets[0] === J.ENEMY_HEALTH_BASE + selEnemy) edit.bossHp[boss.id] = value;
+        if (boss) edit.bossHp[boss.id] = value;
       } else {
         const map = edit.spriteParams.levels[level] || (edit.spriteParams.levels[level] = {});
         map[selEnemy] = { health: value };
@@ -508,7 +603,7 @@
         const d = edit.spriteParams.defaults && edit.spriteParams.defaults.global && edit.spriteParams.defaults.global[selEnemy];
         edit.spriteParams.global[selEnemy] = { health: d && d.health != null ? d.health : 0 };
         const boss = spriteParamBoss(selEnemy);
-        if (boss && boss.offsets[0] === J.ENEMY_HEALTH_BASE + selEnemy) edit.bossHp[boss.id] = edit.spriteParams.global[selEnemy].health;
+        if (boss) edit.bossHp[boss.id] = boss.defaultValue != null ? (boss.defaultValue & 0x7F) : edit.spriteParams.global[selEnemy].health;
       } else if (edit.spriteParams.levels[level]) {
         delete edit.spriteParams.levels[level][selEnemy];
       }
@@ -838,6 +933,8 @@
       bossHp: edit.bossHp ? { ...edit.bossHp } : null,
       bossCount: edit.bossCount ? { ...edit.bossCount } : null,
       bossPos: edit.bossPos ? JSON.parse(JSON.stringify(edit.bossPos)) : null,
+      bossCompanions: edit.bossCompanions ? { ...edit.bossCompanions } : null,
+      bossCompanionWeaponReq: edit.bossCompanionWeaponReq ? { ...edit.bossCompanionWeaponReq } : null,
     };
   }
   function restoreLevel(l, snap) {
@@ -851,6 +948,8 @@
     if (snap.bossHp) edit.bossHp = { ...snap.bossHp };
     if (snap.bossCount) edit.bossCount = { ...snap.bossCount };
     if (snap.bossPos) edit.bossPos = JSON.parse(JSON.stringify(snap.bossPos));
+    if (snap.bossCompanions) edit.bossCompanions = { ...snap.bossCompanions };
+    if (snap.bossCompanionWeaponReq) edit.bossCompanionWeaponReq = { ...snap.bossCompanionWeaponReq };
   }
   function pushUndo() {
     undoStack.push({ level, snap: snapshotLevel(level) });
@@ -2144,6 +2243,10 @@
     pushUndo();
     for (const b of J.BOSS_HP) edit.bossHp[b.id] = b.defaultValue;
     for (const b of J.BOSS_COUNT) edit.bossCount[b.id] = b.defaultValue;
+    if (!edit.bossCompanions) edit.bossCompanions = {};
+    for (const b of (J.BOSS_COMPANIONS || [])) edit.bossCompanions[b.id] = b.defaultValue;
+    if (!edit.bossCompanionWeaponReq) edit.bossCompanionWeaponReq = {};
+    for (const b of (J.BOSS_COMPANIONS || [])) edit.bossCompanionWeaponReq[b.id] = b.defaultWeaponLevel;
     syncBossParamMirror();
     openBossModal();
   };

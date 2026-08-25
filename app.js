@@ -470,7 +470,10 @@
   }
 
   function buildBossCompanionPanel(box) {
-    const entries = J.BOSS_COMPANIONS || [];
+    // 只在界面暴露已确认可安全编辑的运行时伴随点；其余 ROM 表/流程入口
+    // 仍由底层解析和导出逻辑保留，但尚未完成验证，不应让用户误改。
+    const supportedCompanionIds = new Set(['l2boss', 'l3boss', 'l4airdrop', 'l6baseRed']);
+    const entries = (J.BOSS_COMPANIONS || []).filter(entry => supportedCompanionIds.has(entry.id));
     if (!entries.length) return;
     const title = document.createElement('div');
     title.className = 'sprite-param-section-title';
@@ -478,7 +481,7 @@
     box.appendChild(title);
     const hint = document.createElement('div');
     hint.className = 'sprite-param-affected';
-    hint.textContent = '按 Boss 运行流程设置伴随对象；不写入地图、不放置画布精灵。第5关门内实际有 4 个连续投放槽，原版顺序为银坦克-红坦克-红坦克-银坦克。';
+    hint.textContent = '仅显示已确认可编辑的 Boss 运行时伴随：第2关红坦克、第3关红坦克、第4关飞机 Boss 空投兵、第6关一阶段红坦克。不写入地图、不放置画布精灵。';
     box.appendChild(hint);
     let shownLevel = -1;
     for (const entry of entries) {
